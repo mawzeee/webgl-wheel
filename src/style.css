@@ -35,7 +35,6 @@ body {
   pointer-events: none;
   user-select: none;
   z-index: 1;
-  transition: opacity 0.6s ease;
 }
 
 /* ── Canvas ── */
@@ -103,12 +102,6 @@ canvas {
   letter-spacing: -0.02em;
   color: var(--text);
   margin-top: 8px;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-
-.slide-title.changing {
-  opacity: 0;
-  transform: translateY(8px);
 }
 
 /* ── Nav area ── */
