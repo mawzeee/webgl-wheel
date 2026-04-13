@@ -140,9 +140,16 @@ void main() {
     filmBase += (baseTex - 0.5) * 0.01;
 
     // ── Sprocket holes ──
-    float holeSpacing = 1.0 / uSprockets; // spacing in scroll units
-    // Distance to nearest hole center
-    float dy = mod(scrollV + holeSpacing * 0.5, holeSpacing) - holeSpacing * 0.5;
+    // Parallax: left strip scrolls slower, right strip reverses
+    float borderScroll;
+    if (vUv.x < 0.5) {
+      borderScroll = (1.0 - vUv.y) * numSlots + uProgress * 1.12 - numSlots * 0.5 + 0.5;
+    } else {
+      borderScroll = (1.0 - vUv.y) * numSlots + uProgress * 0.88 - numSlots * 0.5 + 0.5;
+    }
+
+    float holeSpacing = 1.0 / uSprockets;
+    float dy = mod(borderScroll + holeSpacing * 0.5, holeSpacing) - holeSpacing * 0.5;
     // Normalize Y to -0.5..0.5 within hole cell
     float normalDY = dy / holeSpacing;
 
@@ -159,7 +166,7 @@ void main() {
     float inHole = 1.0 - smoothstep(-0.06, 0.06, holeSDF);
 
     // ── Registration marks (+ crosses between holes) ──
-    float markDY = mod(scrollV, holeSpacing) - holeSpacing * 0.5;
+    float markDY = mod(borderScroll, holeSpacing) - holeSpacing * 0.5;
     float markNDY = markDY / holeSpacing;
     vec2 markP = vec2(normalDX, markNDY * 2.0 / max(cellAspect, 0.1));
     float crossH = step(abs(markP.x), 0.07) * step(abs(markP.y), 0.22);
