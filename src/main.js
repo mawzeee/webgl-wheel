@@ -7,6 +7,17 @@ const IMAGE_COUNT = 8;
 const FOV = 50;
 const CAMERA_Z = 5;
 
+const SLIDES = [
+  { title: 'The Card\nPlayers' },
+  { title: 'The\nReader' },
+  { title: 'Saturn\'s\nTable' },
+  { title: 'The\nDreamer' },
+  { title: 'The\nFeast' },
+  { title: 'Night\nCurtain' },
+  { title: 'Still\nLife' },
+  { title: 'Red Moon\nRising' },
+];
+
 const params = {
   stripWidth: 0.26,
   stripHeight: 1.1,
@@ -224,7 +235,14 @@ class WheelSlider {
     this.scroll = 0;
     this.scrollTarget = 0;
     this.smoothBend = 0;
+    this.currentFrame = 0;
     this.clock = new THREE.Clock();
+
+    // UI elements
+    this.titleEl = document.getElementById('slide-title');
+    this.bgNumberEl = document.getElementById('bg-number');
+    this.counterEl = document.getElementById('frame-counter');
+    this.exposureEl = document.querySelector('.mono-xs');
 
     this.init();
     this.loadTextures().then(() => {
@@ -400,7 +418,39 @@ class WheelSlider {
     u.uBorderW.value = params.borderWidth;
     u.uSprockets.value = params.sprocketsPerImage;
 
+    // Update UI when frame changes
+    this.updateUI();
+
     this.renderer.render(this.scene, this.camera);
+  }
+
+  updateUI() {
+    const raw = ((this.scroll % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
+    const frame = Math.round(raw) % IMAGE_COUNT;
+
+    if (frame === this.currentFrame) return;
+    this.currentFrame = frame;
+
+    const slide = SLIDES[frame];
+    const num = String(frame + 1).padStart(3, '0');
+
+    // Animate title out, swap, animate in
+    this.titleEl.classList.add('changing');
+    setTimeout(() => {
+      this.titleEl.innerHTML = slide.title.replace('\n', '<br/>');
+      this.titleEl.classList.remove('changing');
+    }, 280);
+
+    // Background number
+    this.bgNumberEl.textContent = String(frame + 1).padStart(2, '0');
+
+    // Counter
+    this.counterEl.textContent = `${num} — 008`;
+
+    // Exposure label
+    if (this.exposureEl) {
+      this.exposureEl.textContent = `Exposure ${num}`;
+    }
   }
 }
 

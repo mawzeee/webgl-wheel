@@ -7,34 +7,38 @@
     <title>Film Wheel — WebGL Photobooth Strip</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Instrument+Serif&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   </head>
   <body>
-    <h1 class="huge-text left-text">35</h1>
-    <h1 class="huge-text right-text">mm</h1>
+
+    <!-- Big background frame number -->
+    <h1 class="bg-number" id="bg-number">01</h1>
 
     <div id="canvas-container"></div>
 
     <div class="ui-layer">
-      <div class="top-right-info">
-        <p class="mono-text">Exposure 001 — Editorial</p>
-        <p class="bold-text">Surreal fashion captured on analog film. Each frame a fleeting tableau of light and shadow.</p>
-        <p class="body-text">Scroll to advance the strip. Velocity bends the film around an infinite wheel — a nod to the mechanical rhythm of projectors and the photobooth strips we used to collect.</p>
+
+      <!-- Top bar -->
+      <header class="top-bar">
+        <span class="mono-sm">Film Wheel</span>
+        <span class="mono-sm" id="frame-counter">001 — 008</span>
+      </header>
+
+      <!-- Slide info — bottom left -->
+      <div class="slide-info" id="slide-info">
+        <span class="mono-xs">Exposure 001</span>
+        <h2 class="slide-title" id="slide-title">The Card<br/>Players</h2>
       </div>
 
-      <div class="bottom-left-info">
-        <p class="mono-text">Kodak Vision 250D &middot; 35mm &middot; 8 exposures</p>
-        <p class="body-text">→ Built with Three.js vertex displacement + custom GLSL film grade.<br/>A Codrops demo exploring analog textures in WebGL.</p>
-      </div>
-
-      <div class="controls">
+      <!-- Nav — bottom right -->
+      <div class="nav-area">
+        <span class="mono-xs">35mm · Kodak Vision 250D</span>
         <div class="nav-buttons">
-          <button id="prev-btn" class="nav-btn">Prev</button>
-          <button id="next-btn" class="nav-btn">Next</button>
+          <button id="prev-btn" class="nav-btn">←</button>
+          <button id="next-btn" class="nav-btn">→</button>
         </div>
       </div>
 
-      <div class="frame-counter" id="frame-counter"></div>
     </div>
 
     <script type="module" src="/src/main.js"></script>
