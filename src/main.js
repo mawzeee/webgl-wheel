@@ -78,7 +78,7 @@ vec4 sampleImage(int idx, vec2 uv) {
 
 void main() {
   float numSlots = 1.0 / uSlotH;
-  float v = (1.0 - vUv.y) * numSlots + uProgress - numSlots * 0.5;
+  float v = (1.0 - vUv.y) * numSlots + uProgress - numSlots * 0.5 + 0.5;
 
   float wrapped = mod(v, 8.0);
   int idx = int(floor(wrapped));
