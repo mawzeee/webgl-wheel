@@ -1,13 +1,28 @@
 import './style.css';
 import * as THREE from 'three';
+import GUI from 'lil-gui';
 
 const IMAGE_PATHS = Array.from({ length: 8 }, (_, i) => `/images/slide-${i + 1}.png`);
 const IMAGE_COUNT = 8;
 const FOV = 50;
 const CAMERA_Z = 5;
-const STRIP_RATIO = 0.38; // % of viewport width — adjust this to control cylinder width
 
-// ─── Vertex shader: morph flat plane → cylinder ───
+// ─── Tunable params (exposed in GUI) ───
+const params = {
+  stripWidth: 0.26,
+  stripHeight: 1.1,
+  wrapAngle: 1.6,
+  bendSensitivity: 1,
+  bendSmoothing: 0.04,
+  scrollSpeed: 0.009,
+  scrollSmoothing: 0.07,
+  snapStrength: 0.048,
+  snapThreshold: 0.09,
+  duotoneStrength: 1.0,
+  shadeExponent: 2.0,
+};
+
+// ─── Vertex shader: flat plane → cylinder ───
 const vertexShader = /* glsl */ `
 uniform float uBend;
 uniform float uRadius;
@@ -17,22 +32,16 @@ varying float vNDotV;
 
 void main() {
   vUv = uv;
-
   vec3 pos = position;
 
-  // Cylinder axis = X (horizontal). Curvature in Y-Z plane (vertical wheel).
-  // Map flat Y position to angle on the cylinder.
+  // Cylinder axis = X (horizontal). Curvature in Y-Z plane.
   float angle = pos.y / uRadius;
-
-  // Cylinder surface position
   float cylY = uRadius * sin(angle);
-  float cylZ = uRadius * (cos(angle) - 1.0); // offset so center stays at z=0
+  float cylZ = uRadius * (cos(angle) - 1.0);
 
-  // Morph between flat and cylinder
   pos.y = mix(pos.y, cylY, uBend);
   pos.z = mix(0.0, cylZ, uBend);
 
-  // Surface normal: how much this vertex faces the camera (along Z)
   float blendedAngle = mix(0.0, angle, uBend);
   vNDotV = cos(blendedAngle);
 
@@ -40,14 +49,16 @@ void main() {
 }
 `;
 
-// ─── Fragment shader: image tiling + duotone + shading ───
+// ─── Fragment shader: tiling + duotone + shading ───
 const fragmentShader = /* glsl */ `
 precision highp float;
 
 uniform sampler2D tex0, tex1, tex2, tex3, tex4, tex5, tex6, tex7;
 uniform float uProgress;
 uniform float uBend;
-uniform float uSlotH; // UV height of one square image slot
+uniform float uSlotH;
+uniform float uDuotoneStrength;
+uniform float uShadeExponent;
 
 varying vec2 vUv;
 varying float vNDotV;
@@ -66,14 +77,9 @@ vec4 sampleImage(int idx, vec2 uv) {
 }
 
 void main() {
-  // ── Image tiling ──
   float numSlots = 1.0 / uSlotH;
-
-  // Map UV to continuous image strip
-  // vUv.y=1 is top, =0 is bottom. Scroll via uProgress.
   float v = (1.0 - vUv.y) * numSlots + uProgress - numSlots * 0.5;
 
-  // Infinite wrap
   float wrapped = mod(v, 8.0);
   int idx = int(floor(wrapped));
   float localV = fract(wrapped);
@@ -81,22 +87,21 @@ void main() {
   vec2 imgUV = vec2(vUv.x, 1.0 - localV);
   vec4 color = sampleImage(idx, imgUV);
 
-  // ── Duotone treatment (velocity-driven) ──
+  // Duotone
   float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-  // High contrast remap
   luma = smoothstep(0.03, 0.78, luma);
-  // Dark charcoal → warm mid-gray
-  vec3 shadow  = vec3(0.055, 0.055, 0.05);
+  vec3 shadow = vec3(0.055, 0.055, 0.05);
   vec3 highlight = vec3(0.50, 0.48, 0.44);
   vec3 duotone = mix(shadow, highlight, luma);
-  color.rgb = mix(color.rgb, duotone, uBend);
+  float duoMix = uBend * uDuotoneStrength;
+  color.rgb = mix(color.rgb, duotone, duoMix);
 
-  // ── Cylinder shading ──
+  // Cylinder shading
   float facing = max(vNDotV, 0.0);
-  float shade = pow(facing, 0.5);
+  float shade = pow(facing, uShadeExponent);
   color.rgb *= mix(1.0, shade, uBend);
 
-  // Fade out faces nearly edge-on (approaching 90°)
+  // Fade edge-on faces
   float edgeAlpha = smoothstep(0.0, 0.12, facing);
   float alpha = mix(1.0, edgeAlpha, uBend);
 
@@ -104,18 +109,20 @@ void main() {
 }
 `;
 
-// ─── Main slider class ───
+// ─── Slider ───
 class WheelSlider {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.scroll = 0;
     this.scrollTarget = 0;
     this.smoothBend = 0;
+    this.isSnapping = false;
 
     this.init();
     this.loadTextures().then(() => {
       this.createMesh();
       this.bindEvents();
+      this.initGUI();
       this.animate();
     });
   }
@@ -134,7 +141,6 @@ class WheelSlider {
     this.container.appendChild(this.renderer.domElement);
   }
 
-  // Get world-space dimensions visible at z=0
   getViewport() {
     const halfH = CAMERA_Z * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
     const halfW = halfH * this.camera.aspect;
@@ -147,112 +153,129 @@ class WheelSlider {
       IMAGE_PATHS.map(
         src =>
           new Promise(resolve => {
-            loader.load(
-              src,
-              tex => {
-                tex.minFilter = THREE.LinearFilter;
-                tex.generateMipmaps = false;
-                resolve(tex);
-              },
-              undefined,
-              () => resolve(null)
-            );
+            loader.load(src, tex => {
+              tex.minFilter = THREE.LinearFilter;
+              tex.generateMipmaps = false;
+              resolve(tex);
+            }, undefined, () => resolve(null));
           })
       )
     );
   }
 
   createMesh() {
+    this.rebuildGeometry();
+  }
+
+  rebuildGeometry() {
     const vp = this.getViewport();
-    const planeW = vp.width * STRIP_RATIO;
-    const planeH = vp.height; // 100vh
-
-    // Cylinder radius: planeH / totalAngle
-    // ~210° wrap → 3.665 radians
-    const cylinderR = planeH / 3.6;
-
-    // UV height of one square image slot
+    const planeW = vp.width * params.stripWidth;
+    const planeH = vp.height * params.stripHeight;
+    const cylinderR = planeH / params.wrapAngle;
     const slotH = planeW / planeH;
 
-    // High segment count for smooth curvature
     const geo = new THREE.PlaneGeometry(planeW, planeH, 1, 164);
 
-    this.material = new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      transparent: true,
-      side: THREE.DoubleSide,
-      uniforms: {
-        tex0: { value: this.textures[0] },
-        tex1: { value: this.textures[1] },
-        tex2: { value: this.textures[2] },
-        tex3: { value: this.textures[3] },
-        tex4: { value: this.textures[4] },
-        tex5: { value: this.textures[5] },
-        tex6: { value: this.textures[6] },
-        tex7: { value: this.textures[7] },
-        uProgress: { value: 0 },
-        uBend: { value: 0 },
-        uRadius: { value: cylinderR },
-        uSlotH: { value: slotH },
-      },
-    });
-
-    this.mesh = new THREE.Mesh(geo, this.material);
-    this.scene.add(this.mesh);
+    if (this.mesh) {
+      this.mesh.geometry.dispose();
+      this.mesh.geometry = geo;
+      this.material.uniforms.uRadius.value = cylinderR;
+      this.material.uniforms.uSlotH.value = slotH;
+    } else {
+      this.material = new THREE.ShaderMaterial({
+        vertexShader,
+        fragmentShader,
+        transparent: true,
+        side: THREE.DoubleSide,
+        uniforms: {
+          tex0: { value: this.textures[0] },
+          tex1: { value: this.textures[1] },
+          tex2: { value: this.textures[2] },
+          tex3: { value: this.textures[3] },
+          tex4: { value: this.textures[4] },
+          tex5: { value: this.textures[5] },
+          tex6: { value: this.textures[6] },
+          tex7: { value: this.textures[7] },
+          uProgress: { value: 0 },
+          uBend: { value: 0 },
+          uRadius: { value: cylinderR },
+          uSlotH: { value: slotH },
+          uDuotoneStrength: { value: params.duotoneStrength },
+          uShadeExponent: { value: params.shadeExponent },
+        },
+      });
+      this.mesh = new THREE.Mesh(geo, this.material);
+      this.scene.add(this.mesh);
+    }
   }
 
   bindEvents() {
     window.addEventListener('wheel', e => {
-      this.scrollTarget += e.deltaY * 0.004;
+      this.scrollTarget += e.deltaY * params.scrollSpeed;
+      this.isSnapping = false; // user is actively scrolling
     });
 
     document.getElementById('next-btn')?.addEventListener('click', () => {
-      this.scrollTarget += 1;
+      this.scrollTarget = Math.round(this.scrollTarget) + 1;
+      this.isSnapping = false;
     });
     document.getElementById('prev-btn')?.addEventListener('click', () => {
-      this.scrollTarget -= 1;
+      this.scrollTarget = Math.round(this.scrollTarget) - 1;
+      this.isSnapping = false;
     });
 
-    window.addEventListener('resize', () => this.onResize());
+    window.addEventListener('resize', () => {
+      const w = this.container.clientWidth || window.innerWidth;
+      const h = this.container.clientHeight || window.innerHeight;
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(w, h);
+      this.rebuildGeometry();
+    });
   }
 
-  onResize() {
-    const w = this.container.clientWidth || window.innerWidth;
-    const h = this.container.clientHeight || window.innerHeight;
+  initGUI() {
+    const gui = new GUI({ title: 'Wheel Controls' });
 
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h);
-
-    // Rebuild geometry to match new viewport
-    if (this.mesh) {
-      const vp = this.getViewport();
-      const planeW = vp.width * STRIP_RATIO;
-      const planeH = vp.height;
-
-      this.mesh.geometry.dispose();
-      this.mesh.geometry = new THREE.PlaneGeometry(planeW, planeH, 1, 164);
-
-      this.material.uniforms.uRadius.value = planeH / 3.6;
-      this.material.uniforms.uSlotH.value = planeW / planeH;
-    }
+    gui.add(params, 'stripWidth', 0.15, 0.65, 0.01).name('Strip Width')
+      .onChange(() => this.rebuildGeometry());
+    gui.add(params, 'stripHeight', 0.5, 2.5, 0.05).name('Strip Height')
+      .onChange(() => this.rebuildGeometry());
+    gui.add(params, 'wrapAngle', 1.5, 6.0, 0.1).name('Wrap Angle')
+      .onChange(() => this.rebuildGeometry());
+    gui.add(params, 'bendSensitivity', 0.5, 8.0, 0.1).name('Bend Sensitivity');
+    gui.add(params, 'bendSmoothing', 0.01, 0.15, 0.005).name('Bend Smoothing');
+    gui.add(params, 'scrollSpeed', 0.001, 0.01, 0.001).name('Scroll Speed');
+    gui.add(params, 'snapStrength', 0.002, 0.06, 0.002).name('Snap Strength');
+    gui.add(params, 'snapThreshold', 0.02, 0.5, 0.01).name('Snap Threshold');
+    gui.add(params, 'duotoneStrength', 0, 1, 0.05).name('Duotone');
+    gui.add(params, 'shadeExponent', 0.1, 2.0, 0.05).name('Edge Shading');
   }
 
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    // Smooth scroll interpolation
+    // ── Scroll interpolation ──
     const diff = this.scrollTarget - this.scroll;
-    this.scroll += diff * 0.07;
-
-    // Velocity → bend (0 = flat, 1 = full cylinder)
     const velocity = Math.abs(diff);
-    const targetBend = Math.min(velocity * 6, 1);
-    this.smoothBend += (targetBend - this.smoothBend) * 0.05;
 
+    // Auto-snap: when velocity is low, ease scrollTarget to nearest image
+    if (velocity < params.snapThreshold) {
+      const nearest = Math.round(this.scrollTarget);
+      this.scrollTarget += (nearest - this.scrollTarget) * params.snapStrength;
+    }
+
+    this.scroll += diff * params.scrollSmoothing;
+
+    // ── Bend ──
+    const targetBend = Math.min(velocity * params.bendSensitivity, 1);
+    this.smoothBend += (targetBend - this.smoothBend) * params.bendSmoothing;
+
+    // ── Update uniforms ──
     this.material.uniforms.uProgress.value = this.scroll;
     this.material.uniforms.uBend.value = this.smoothBend;
+    this.material.uniforms.uDuotoneStrength.value = params.duotoneStrength;
+    this.material.uniforms.uShadeExponent.value = params.shadeExponent;
 
     this.renderer.render(this.scene, this.camera);
   }
