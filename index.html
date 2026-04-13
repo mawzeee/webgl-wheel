@@ -4,51 +4,37 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Awwwards WebGL Slider Demo</title>
-    <!-- Import Inter Font -->
+    <title>Film Wheel — WebGL Photobooth Strip</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500&family=Instrument+Serif&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
   </head>
   <body>
-    <!-- The huge background letters (TG) -->
-    <h1 class="huge-text left-text" id="left-txt">TG</h1>
+    <h1 class="huge-text left-text">35</h1>
+    <h1 class="huge-text right-text">mm</h1>
 
-    <!-- The huge foreground letters (7th) - Moved to be BEHIND the canvas now -->
-    <h1 class="huge-text right-text" id="right-txt">7th</h1>
-
-    <!-- Three.js Canvas Container -->
     <div id="canvas-container"></div>
 
-    <!-- UI Overlay for texts -->
     <div class="ui-layer">
-      <!-- Top Right Text -->
       <div class="top-right-info">
-        <p class="bold-text">London DJ Tommy Gold Partners with Seventh on New 'Coffee' V2 Collection.</p>
-        <p class="body-text">Tommy Gold, West London DJ known for versatile sets and cultural diversity, fronts Seventh's latest 'Coffee' V2 tracksuit campaign. Shot at Young Space, the project highlights Tommy's journey from diverse roots and early challenges to collaborations with Louis Vuitton, Boiler Room, and NTS Radio.</p>
-        <p class="body-text">At just 25, Tommy has earned recognition for his emotional performances and authentic approach. His Seventh partnership celebrates shared commitments to simplicity and universal appeal in both his musical style and the brand's core.</p>
+        <p class="mono-text">Exposure 001 — Editorial</p>
+        <p class="bold-text">Surreal fashion captured on analog film. Each frame a fleeting tableau of light and shadow.</p>
+        <p class="body-text">Scroll to advance the strip. Velocity bends the film around an infinite wheel — a nod to the mechanical rhythm of projectors and the photobooth strips we used to collect.</p>
       </div>
 
-      <!-- Bottom Left Text -->
       <div class="bottom-left-info">
-        <p class="body-text">→ The 'Coffee' V2 tracksuit, with its deep chestnut tone<br/>and 90s-inspired silhouette, drops Thursday, 1st February.</p>
+        <p class="mono-text">Kodak Vision 250D &middot; 35mm &middot; 8 exposures</p>
+        <p class="body-text">→ Built with Three.js vertex displacement + custom GLSL film grade.<br/>A Codrops demo exploring analog textures in WebGL.</p>
       </div>
 
-      <!-- Controls -->
       <div class="controls">
         <div class="nav-buttons">
-          <button id="prev-btn" class="nav-btn">PREV</button>
-          <button id="next-btn" class="nav-btn">NEXT</button>
-        </div>
-        <div class="effect-selector">
-          <span class="selector-label">Effect:</span>
-          <button class="effect-btn active" data-effect="0">1</button>
-          <button class="effect-btn" data-effect="1">2</button>
-          <button class="effect-btn" data-effect="2">3</button>
-          <button class="effect-btn" data-effect="3">4</button>
-          <button class="effect-btn" data-effect="4">5</button>
+          <button id="prev-btn" class="nav-btn">Prev</button>
+          <button id="next-btn" class="nav-btn">Next</button>
         </div>
       </div>
+
+      <div class="frame-counter" id="frame-counter"></div>
     </div>
 
     <script type="module" src="/src/main.js"></script>
