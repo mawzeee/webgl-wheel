@@ -130,14 +130,17 @@ float scratches(vec2 uv, float s) {
 }
 
 vec3 lightLeak(vec2 uv, float t) {
-  float bucket = floor(t * 0.2);
-  float life = fract(t * 0.2);
-  float env = smoothstep(0.0, 0.25, life) * smoothstep(1.0, 0.75, life);
-  vec2 c = vec2(hash1(bucket), hash1(bucket + 9.7));
-  float r = 0.35 + 0.25 * hash1(bucket + 2.1);
+  float bucket = floor(t * 0.12);
+  float life = fract(t * 0.12);
+  float env = smoothstep(0.0, 0.3, life) * smoothstep(1.0, 0.7, life);
+  // Only emit some of the time
+  if (hash1(bucket) < 0.55) return vec3(0.0);
+  vec2 c = vec2(hash1(bucket + 1.3), hash1(bucket + 9.7));
+  float r = 0.25 + 0.18 * hash1(bucket + 2.1);
   float falloff = smoothstep(r, 0.0, length(uv - c));
-  vec3 warm = mix(vec3(1.0, 0.55, 0.2), vec3(1.0, 0.3, 0.5), hash1(bucket + 5.3));
-  return warm * falloff * env * 0.22;
+  // Warm amber only, desaturated
+  vec3 warm = vec3(0.85, 0.55, 0.28);
+  return warm * falloff * env * 0.08;
 }
 
 vec3 dyeShift(vec3 c, float frameIdx) {
@@ -225,6 +228,44 @@ void main() {
 }
 `;
 
+// ── Audio ──
+
+class AudioKit {
+  constructor() {
+    this.click = new Audio('/audio/projector-click.mp3');
+    this.hum = new Audio('/audio/film-hum.mp3');
+    this.ambient = new Audio('/audio/ambient-room.mp3');
+
+    this.click.volume = 0.35;
+    this.hum.loop = true;
+    this.ambient.loop = true;
+    this.hum.volume = 0;
+    this.ambient.volume = 0.08;
+
+    this.started = false;
+  }
+
+  start() {
+    if (this.started) return;
+    this.started = true;
+    // Browsers require user gesture — .play() may reject silently, that's fine
+    this.hum.play().catch(() => {});
+    this.ambient.play().catch(() => {});
+  }
+
+  snap() {
+    if (!this.started) return;
+    this.click.currentTime = 0;
+    this.click.play().catch(() => {});
+  }
+
+  // Hum volume scales with scroll velocity — louder while spinning
+  setActivity(level) {
+    if (!this.started) return;
+    this.hum.volume = Math.min(level * 0.45, 0.32);
+  }
+}
+
 // ── App ──
 
 class WheelSlider {
@@ -246,6 +287,7 @@ class WheelSlider {
     this.frame = 0;
     this.transitioning = false;
     this.clock = new THREE.Clock();
+    this.audio = new AudioKit();
 
     this.initScene();
     this.loadTextures().then(() => {
@@ -321,6 +363,7 @@ class WheelSlider {
     // ── Wheel: adds to momentum, not directly to target ──
     window.addEventListener('wheel', e => {
       if (this.introActive) return;
+      this.audio.start();
       this.momentum += e.deltaY * 0.0004;
       this.momentum = Math.max(-0.18, Math.min(0.18, this.momentum));
     }, { passive: true });
@@ -330,6 +373,7 @@ class WheelSlider {
 
     const startDrag = (y) => {
       if (this.introActive) return;
+      this.audio.start();
       this.dragging = true;
       this.momentum = 0;
       this.dragVelocity = 0;
@@ -412,6 +456,10 @@ class WheelSlider {
 
     // Combine intro bend (tweened) with interaction bend (velocity-driven)
     const finalBend = Math.max(this.smoothBend, this.introBend);
+
+    // Audio: hum volume tracks interaction energy (velocity + |momentum|)
+    const activity = Math.min(vel * 4 + Math.abs(this.momentum) * 4, 1);
+    this.audio.setActivity(activity);
 
     const u = this.material.uniforms;
     u.uProgress.value = this.scroll;
@@ -497,6 +545,10 @@ class WheelSlider {
     this.exposureEl.textContent = `Exposure ${num}`;
     this.counterEl.textContent = `${num} — 008`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
+
+    // Projector click on frame change
+    this.audio.snap();
+
     this.transitioning = false;
   }
 }
