@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
 import { gsap } from 'gsap';
+import { Pane } from 'tweakpane';
 
 const IMAGE_PATHS = Array.from({ length: 8 }, (_, i) => `/images/slide-${i + 1}.png`);
 const IMAGE_COUNT = 8;
@@ -233,37 +234,24 @@ void main() {
 class AudioKit {
   constructor() {
     this.click = new Audio('/audio/projector-click.mp3');
-    this.hum = new Audio('/audio/film-hum.mp3');
-    this.ambient = new Audio('/audio/ambient-room.mp3');
-
-    this.click.volume = 0.35;
-    this.hum.loop = true;
-    this.ambient.loop = true;
-    this.hum.volume = 0;
-    this.ambient.volume = 0.08;
-
-    this.started = false;
+    this.click.volume = 0.3;
+    this.muted = false;
+    this.unlocked = false;
   }
 
-  start() {
-    if (this.started) return;
-    this.started = true;
-    // Browsers require user gesture — .play() may reject silently, that's fine
-    this.hum.play().catch(() => {});
-    this.ambient.play().catch(() => {});
-  }
+  // Call on first user gesture to satisfy browser autoplay policy.
+  // No looping audio — just clicks.
+  unlock() { this.unlocked = true; }
+
+  start() { this.unlock(); } // alias for existing call sites
 
   snap() {
-    if (!this.started) return;
+    if (!this.unlocked || this.muted) return;
     this.click.currentTime = 0;
     this.click.play().catch(() => {});
   }
 
-  // Hum volume scales with scroll velocity — louder while spinning
-  setActivity(level) {
-    if (!this.started) return;
-    this.hum.volume = Math.min(level * 0.45, 0.32);
-  }
+  setActivity() { /* no-op — no ambient loops */ }
 }
 
 // ── App ──
@@ -294,6 +282,7 @@ class WheelSlider {
       this.createStrip();
       this.listen();
       this.enter();
+      this.initGUI();
       this.loop();
     });
   }
@@ -465,6 +454,12 @@ class WheelSlider {
     u.uProgress.value = this.scroll;
     u.uBend.value = finalBend;
     u.uTime.value = this.clock.getElapsedTime();
+    // Live-bind Tweakpane params
+    u.uFilmStrength.value = params.filmStrength;
+    u.uFilmBase.value = params.filmBaseStrength;
+    u.uGrain.value = params.grainAmount;
+    u.uBorderW.value = params.borderWidth;
+    u.uSprockets.value = params.sprocketsPerImage;
 
     this.checkFrame();
     this.renderer.render(this.scene, this.camera);
@@ -485,14 +480,13 @@ class WheelSlider {
     this.exposureEl.textContent = 'Exposure 001';
 
     // Hide UI (avoid FOUC — set instantly)
-    gsap.set(['.top-bar', '.slide-info', '.nav-area', '#bg-number'], { opacity: 0 });
+    gsap.set(['.frame__top', '.frame__counter', '.frame__bottom', '.nav-buttons', '#bg-number'], { opacity: 0 });
 
     const tl = gsap.timeline({
       delay: 0.3,
       onComplete: () => { this.introActive = false; },
     });
 
-    // Strip rises from below with cylinder unrolling
     tl.to(this.mesh.position, {
       y: 0,
       duration: 1.9,
@@ -505,27 +499,31 @@ class WheelSlider {
       ease: 'power2.out',
     }, '<+=0.25');
 
-    // Background number fades in subtly during strip entry
     tl.to('#bg-number', {
-      opacity: 0.04,
+      opacity: 0.05,
       duration: 1.4,
       ease: 'power2.out',
     }, '-=1.4');
 
-    // UI elements stagger in near the end
-    tl.to('.top-bar', {
+    tl.to('.frame__top', {
       opacity: 1,
       duration: 0.6,
       ease: 'power2.out',
     }, '-=0.9');
 
-    tl.to('.slide-info', {
+    tl.to('.frame__counter', {
+      opacity: 1,
+      duration: 0.6,
+      ease: 'power2.out',
+    }, '-=0.55');
+
+    tl.to('.frame__bottom', {
       opacity: 1,
       duration: 0.6,
       ease: 'power2.out',
     }, '-=0.5');
 
-    tl.to('.nav-area', {
+    tl.to('.nav-buttons', {
       opacity: 1,
       duration: 0.6,
       ease: 'power2.out',
@@ -550,6 +548,49 @@ class WheelSlider {
     this.audio.snap();
 
     this.transitioning = false;
+  }
+
+  // ── Tweakpane (hidden by default, toggle with D) ──
+  initGUI() {
+    const pane = new Pane({ title: 'Debug' });
+    const strip = pane.addFolder({ title: 'Strip' });
+    strip.addBinding(params, 'stripWidth', { min: 0.15, max: 0.65, step: 0.01 })
+      .on('change', () => this.rebuildStrip());
+    strip.addBinding(params, 'stripHeight', { min: 0.5, max: 2.5, step: 0.05 })
+      .on('change', () => this.rebuildStrip());
+    strip.addBinding(params, 'wrapAngle', { min: 1.0, max: 6.0, step: 0.1 })
+      .on('change', () => this.rebuildStrip());
+
+    const film = pane.addFolder({ title: 'Film' });
+    film.addBinding(params, 'filmStrength', { min: 0, max: 1, step: 0.05 });
+    film.addBinding(params, 'filmBaseStrength', { min: 0, max: 0.5, step: 0.01 });
+    film.addBinding(params, 'grainAmount', { min: 0, max: 0.15, step: 0.005 });
+    film.addBinding(params, 'borderWidth', { min: 0, max: 0.12, step: 0.005 });
+    film.addBinding(params, 'sprocketsPerImage', { min: 1, max: 6, step: 1 });
+
+    const audio = pane.addFolder({ title: 'Audio' });
+    audio.addBinding(this.audio, 'muted');
+
+    // Toggle pane visibility with 'D'
+    const paneEl = document.querySelector('.tp-dfwv');
+    window.addEventListener('keydown', e => {
+      if (e.key === 'd' || e.key === 'D') {
+        paneEl?.classList.toggle('visible');
+      }
+    });
+  }
+
+  // ── Helper for Tweakpane strip rebinding ──
+  rebuildStrip() {
+    if (!this.mesh) return;
+    const vp = this.viewport();
+    const imgW = vp.w * params.stripWidth;
+    const pw = imgW / (1 - 2 * params.borderWidth);
+    const ph = vp.h * params.stripHeight;
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = new THREE.PlaneGeometry(pw, ph, 32, 164);
+    this.material.uniforms.uRadius.value = ph / params.wrapAngle;
+    this.material.uniforms.uSlotH.value = imgW / ph;
   }
 }
 

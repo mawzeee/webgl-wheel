@@ -7,7 +7,7 @@
     <title>Film Wheel — WebGL Photobooth Strip</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
   </head>
   <body>
 
@@ -15,26 +15,49 @@
 
     <div id="canvas-container"></div>
 
-    <div class="ui-layer">
-
-      <header class="top-bar">
-        <span class="mono-sm">Film Wheel</span>
-        <span class="mono-sm" id="frame-counter">001 — 008</span>
+    <!-- Codrops-style chrome overlay -->
+    <div class="frame">
+      <header class="frame__top">
+        <h1 class="frame__title">Film Wheel</h1>
+        <nav class="frame__nav">
+          <a href="#" class="link">Tutorial</a>
+          <a href="#" class="link">Article</a>
+          <a href="https://github.com/mawzeee/webgl-wheel" class="link" target="_blank">GitHub</a>
+          <a href="https://tympanus.net/codrops/demos/" class="link" target="_blank">All demos</a>
+        </nav>
+        <div class="frame__tags">
+          <a href="#" class="tag">#webgl</a>
+          <a href="#" class="tag">#three.js</a>
+          <a href="#" class="tag">#glsl</a>
+          <a href="#" class="tag">#film</a>
+          <a href="#" class="tag">#shader</a>
+          <a href="#" class="tag">#scroll</a>
+        </div>
       </header>
 
-      <div class="slide-info" id="slide-info">
-        <span class="mono-xs" id="exposure-label">Exposure 001</span>
-        <h2 class="slide-title" id="slide-title">The Card<br/>Players</h2>
-      </div>
+      <span class="frame__counter" id="frame-counter">001 / 008</span>
 
-      <div class="nav-area">
-        <span class="mono-xs">35mm · Kodak Vision 250D</span>
-        <div class="nav-buttons">
-          <button id="prev-btn" class="nav-btn">←</button>
-          <button id="next-btn" class="nav-btn">→</button>
+      <footer class="frame__bottom">
+        <div class="slide-info">
+          <span class="mono-xs" id="exposure-label">Exposure 001</span>
+          <h2 class="slide-title" id="slide-title">The Card<br/>Players</h2>
         </div>
+
+        <div class="frame__meta">
+          <span class="mono-xs" id="stock-label">35mm · Kodak Vision 250D</span>
+          <span class="mono-xs muted">Press D for debug tools</span>
+        </div>
+      </footer>
+
+      <div class="nav-buttons">
+        <button id="prev-btn" class="nav-btn" aria-label="Previous frame">←</button>
+        <button id="next-btn" class="nav-btn" aria-label="Next frame">→</button>
       </div>
 
+      <div class="byline">
+        <span class="mono-xs muted">By</span>
+        <span class="mono-xs strong">Karim Saab</span>
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>

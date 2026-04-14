@@ -1,11 +1,17 @@
-/* Film Wheel — Retro-futuristic editorial */
+/* Film Wheel — Codrops chrome */
 
 :root {
-  --surface: #F0EAE0;
-  --text: #1A1714;
-  --text-mid: #6B5E52;
-  --text-faded: #B8ADA2;
-  --accent: #B85C38;
+  --bg: #F0EAE0;
+  --ink: #141210;
+  --muted: #8A7E74;
+  --faint: #C7BCAE;
+
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: 'Instrument Serif', serif;
+
+  --chrome: 11px;
+  --micro: 10px;
+  --ls: 0.08em;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -14,9 +20,10 @@ body {
   width: 100vw;
   height: 100dvh;
   overflow: hidden;
-  background: var(--surface);
-  font-family: 'Space Mono', monospace;
-  color: var(--text);
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: var(--chrome);
+  color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -25,13 +32,13 @@ body {
   position: fixed;
   bottom: -8vh;
   left: -2vw;
-  font-family: 'Instrument Serif', serif;
+  font-family: var(--serif);
   font-size: clamp(280px, 42vw, 700px);
   font-weight: 400;
   line-height: 0.8;
   letter-spacing: -0.04em;
-  color: var(--text);
-  opacity: 0.04;
+  color: var(--ink);
+  opacity: 0.05;
   pointer-events: none;
   user-select: none;
   z-index: 1;
@@ -45,100 +52,175 @@ body {
   pointer-events: none;
 }
 
-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
+canvas { display: block; width: 100%; height: 100%; }
 
-/* ── UI layer ── */
-.ui-layer {
+/* ── Frame chrome overlay ── */
+.frame {
   position: fixed;
   inset: 0;
   z-index: 30;
+  padding: 22px 28px;
   pointer-events: none;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
 }
 
-/* ── Typography ── */
-.mono-sm {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-mid);
-}
+.frame > * { pointer-events: auto; }
 
-.mono-xs {
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--text-faded);
-  display: block;
-}
-
-/* ── Top bar ── */
-.top-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 24px 32px;
-}
-
-/* ── Slide info ── */
-.slide-info {
-  position: absolute;
-  bottom: 32px;
-  left: 32px;
-}
-
-.slide-title {
-  font-family: 'Instrument Serif', serif;
-  font-size: clamp(32px, 4.5vw, 64px);
-  font-weight: 400;
-  line-height: 1.0;
-  letter-spacing: -0.02em;
-  color: var(--text);
-  margin-top: 8px;
-}
-
-/* ── Nav area ── */
-.nav-area {
-  position: absolute;
-  bottom: 32px;
-  right: 32px;
+.frame__top {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.frame__counter {
+  grid-column: 2;
+  grid-row: 1;
+  font-size: var(--chrome);
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: start;
+}
+
+.frame__bottom {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  display: flex;
+  justify-content: space-between;
   align-items: flex-end;
-  gap: 12px;
-  pointer-events: auto;
+  gap: 48px;
 }
 
 .nav-buttons {
+  grid-column: 2;
+  grid-row: 3;
   display: flex;
-  gap: 4px;
+  gap: 5px;
+  align-self: end;
+  justify-self: end;
+  transform: translateY(-44px);
 }
 
-.nav-btn {
-  width: 40px;
-  height: 40px;
+/* ── Typography ── */
+
+.frame__title {
+  font-family: var(--mono);
+  font-size: var(--chrome);
+  font-weight: 600;
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.frame__nav,
+.frame__tags {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  gap: 14px;
+  font-size: var(--chrome);
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+}
+
+.link,
+.tag {
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.link:hover,
+.tag:hover {
+  color: var(--ink);
+}
+
+.mono-xs {
+  font-size: var(--micro);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: block;
+}
+
+.mono-xs.muted { color: var(--faint); }
+.mono-xs.strong { color: var(--ink); font-weight: 600; }
+
+/* ── Slide info (bottom left) ── */
+
+.slide-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slide-title {
+  font-family: var(--serif);
+  font-size: clamp(32px, 4.5vw, 60px);
+  font-weight: 400;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+/* ── Meta (bottom right) ── */
+
+.frame__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  text-align: right;
+}
+
+/* ── Byline (bottom-left, below slide-info) ── */
+
+.byline {
+  position: fixed;
+  bottom: 22px;
+  left: 28px;
+  display: none; /* swapped into slide-info instead */
+}
+
+/* ── Nav buttons ── */
+
+.nav-btn {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
   background: transparent;
-  border: 1px solid var(--text-faded);
+  border: 1px solid var(--faint);
   border-radius: 50%;
-  font-family: 'Space Mono', monospace;
-  font-size: 16px;
-  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
   cursor: pointer;
-  transition: all 0.25s ease;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
 .nav-btn:hover {
-  background: var(--text);
-  color: var(--surface);
-  border-color: var(--text);
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
 }
+
+/* ── Tweakpane overrides ── */
+
+.tp-dfwv {
+  position: fixed;
+  top: 22px;
+  right: 180px;
+  width: 240px;
+  z-index: 100;
+  font-family: var(--mono) !important;
+  font-size: var(--micro) !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  display: none;
+}
+
+.tp-dfwv.visible { display: block; }
