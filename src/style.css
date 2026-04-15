@@ -166,6 +166,18 @@ canvas { display: block; width: 100%; height: 100%; }
   color: var(--ink);
 }
 
+/* Split-line reveal: each line sits in an overflow-hidden wrapper */
+.slide-title .line-wrap {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 2px; /* breathing room for descenders */
+}
+
+.slide-title .line {
+  display: block;
+  will-change: transform;
+}
+
 /* ── Meta (bottom right) ── */
 
 .frame__meta {
@@ -206,6 +218,117 @@ canvas { display: block; width: 100%; height: 100%; }
   background: var(--ink);
   color: var(--bg);
   border-color: var(--ink);
+}
+
+/* ── Peek (click-to-fullscreen frame) ── */
+
+.peek {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.45s ease-out;
+}
+
+.peek.open {
+  pointer-events: auto;
+  opacity: 1;
+}
+
+.peek__backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--bg);
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+
+.peek.open .peek__backdrop { opacity: 0.95; }
+
+.peek__image {
+  position: relative;
+  z-index: 2;
+  max-width: min(70vw, 780px);
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: 3px;
+  box-shadow:
+    0 30px 80px -20px rgba(0, 0, 0, 0.45),
+    0 8px 20px -4px rgba(0, 0, 0, 0.25);
+  transform: scale(0.88) translateY(30px);
+  transition: transform 0.55s cubic-bezier(0.2, 0.9, 0.3, 1);
+  will-change: transform;
+}
+
+.peek.open .peek__image {
+  transform: scale(1) translateY(0);
+}
+
+.peek__meta {
+  position: absolute;
+  right: 6vw;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 240px;
+  opacity: 0;
+  transform: translate(12px, -50%);
+  transition: opacity 0.4s ease-out 0.2s, transform 0.4s ease-out 0.2s;
+}
+
+.peek.open .peek__meta {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+.peek__title {
+  font-family: var(--serif);
+  font-size: clamp(28px, 3vw, 44px);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.peek__close {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  background: transparent;
+  border: 1px solid var(--faint);
+  border-radius: 20px;
+  padding: 9px 18px;
+  font-family: var(--mono);
+  font-size: var(--chrome);
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+  color: var(--ink);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.4s ease-out 0.3s, background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.peek.open .peek__close { opacity: 1; }
+
+.peek__close:hover {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+
+/* Make the canvas clickable so users can actually click frames */
+#canvas-container {
+  pointer-events: auto !important;
+  cursor: pointer;
 }
 
 /* ── Tweakpane overrides ── */

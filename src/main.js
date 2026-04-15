@@ -258,6 +258,10 @@ class WheelSlider {
     this.lastTooth = 0;
     this.shutterFlash = 0;
     this.lastInputTime = 0;
+    // Cursor parallax state
+    this.mouseX = 0; this.mouseY = 0;
+    this.parallaxX = 0; this.parallaxY = 0;
+    this.peekOpen = false;
     this.transitioning = false;
     this.startTime = performance.now();
     this.audio = new AudioKit();
@@ -338,7 +342,7 @@ class WheelSlider {
   listen() {
     // ── Wheel: adds to momentum, not directly to target ──
     window.addEventListener('wheel', e => {
-      if (this.introActive) return;
+      if (this.introActive || this.peekOpen) return;
       this.audio.start();
       this.momentum += e.deltaY * 0.0009;
       this.momentum = Math.max(-0.3, Math.min(0.3, this.momentum));
@@ -349,7 +353,7 @@ class WheelSlider {
     let lastY = 0, lastTime = 0;
 
     const startDrag = (y) => {
-      if (this.introActive) return;
+      if (this.introActive || this.peekOpen) return;
       this.audio.start();
       this.dragging = true;
       this.momentum = 0;
@@ -381,8 +385,29 @@ class WheelSlider {
       this.momentum = this.dragVelocity * 0.0055;
     };
 
-    window.addEventListener('pointerdown', e => startDrag(e.clientY));
-    window.addEventListener('pointermove', e => moveDrag(e.clientY));
+    // Distinguish click from drag — threshold tracking
+    let downY = 0, downX = 0, downT = 0;
+    window.addEventListener('pointerdown', e => {
+      downY = e.clientY; downX = e.clientX; downT = performance.now();
+      startDrag(e.clientY);
+    });
+    window.addEventListener('pointerup', e => {
+      const dx = Math.abs(e.clientX - downX);
+      const dy = Math.abs(e.clientY - downY);
+      const dt = performance.now() - downT;
+      // If barely moved + quick: treat as click → open peek on current frame
+      if (dx < 6 && dy < 6 && dt < 300 && !this.peekOpen) {
+        const tgt = e.target;
+        // Only open peek when clicking on canvas area (ignore UI clicks)
+        if (tgt && tgt.tagName === 'CANVAS') this.openPeek();
+      }
+    });
+    window.addEventListener('pointermove', e => {
+      moveDrag(e.clientY);
+      // Track mouse for parallax — normalized -1..1
+      this.mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+      this.mouseY = (e.clientY / window.innerHeight) * 2 - 1;
+    });
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
 
@@ -391,6 +416,13 @@ class WheelSlider {
     });
     document.getElementById('prev-btn').addEventListener('click', () => {
       this.scrollTarget = Math.round(this.scrollTarget) - 1;
+    });
+
+    // Peek close handlers
+    document.getElementById('peek-close')?.addEventListener('click', () => this.closePeek());
+    document.querySelector('.peek__backdrop')?.addEventListener('click', () => this.closePeek());
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && this.peekOpen) this.closePeek();
     });
 
     window.addEventListener('resize', () => {
@@ -467,6 +499,15 @@ class WheelSlider {
     u.uBorderW.value = params.borderWidth;
     u.uSprockets.value = params.sprocketsPerImage;
 
+    // Cursor parallax — smoothed tilt based on mouse position
+    this.parallaxX += (this.mouseX - this.parallaxX) * 0.06;
+    this.parallaxY += (this.mouseY - this.parallaxY) * 0.06;
+    if (this.mesh) {
+      // Subtle rotation: up to ~3° each axis
+      this.mesh.rotation.y = this.parallaxX * 0.05;
+      this.mesh.rotation.x = -this.parallaxY * 0.03;
+    }
+
     this.checkFrame();
     this.renderer.render(this.scene, this.camera);
   }
@@ -536,6 +577,52 @@ class WheelSlider {
     }, '-=0.5');
   }
 
+  // Peek — opens a fullscreen projected view of the current centered frame
+  openPeek() {
+    const peek = document.getElementById('peek');
+    if (!peek) return;
+    this.peekOpen = true;
+    const f = this.frame;
+    document.getElementById('peek-image').src = IMAGE_PATHS[f];
+    document.getElementById('peek-title').textContent = TITLES[f].replace(/<br\s*\/?>/gi, ' ');
+    document.getElementById('peek-index').textContent =
+      `${String(f + 1).padStart(3, '0')} / ${String(IMAGE_COUNT).padStart(3, '0')}`;
+    peek.classList.add('open');
+    this.audio.snap();
+  }
+
+  closePeek() {
+    const peek = document.getElementById('peek');
+    if (!peek) return;
+    this.peekOpen = false;
+    peek.classList.remove('open');
+  }
+
+  // Split-line title reveal: wraps each line in a clip-mask and animates
+  swapTitle(html) {
+    const lines = html.split(/<br\s*\/?>/i);
+    const oldLines = this.titleEl.querySelectorAll('.line');
+
+    // Animate current lines OUT, then swap and animate IN
+    const outTween = oldLines.length
+      ? gsap.to(oldLines, { y: '-105%', duration: 0.35, stagger: 0.04, ease: 'power3.in' })
+      : Promise.resolve();
+
+    const doSwap = () => {
+      this.titleEl.innerHTML = lines
+        .map(t => `<span class="line-wrap"><span class="line">${t}</span></span>`)
+        .join('');
+      const newLines = this.titleEl.querySelectorAll('.line');
+      gsap.fromTo(newLines,
+        { y: '105%' },
+        { y: '0%', duration: 0.55, stagger: 0.06, ease: 'power3.out' }
+      );
+    };
+
+    if (outTween.then) doSwap();
+    else outTween.eventCallback('onComplete', doSwap);
+  }
+
   checkFrame() {
     const raw = ((this.scroll % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
     const f = Math.round(raw) % IMAGE_COUNT;
@@ -545,7 +632,8 @@ class WheelSlider {
 
     const num = String(f + 1).padStart(3, '0');
 
-    this.titleEl.innerHTML = TITLES[f];
+    // Split-letter title reveal (line-wise clip reveal)
+    this.swapTitle(TITLES[f]);
     this.exposureEl.textContent = `Exposure ${num}`;
     this.counterEl.textContent = `${num} — 008`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');

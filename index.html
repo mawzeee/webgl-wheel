@@ -40,7 +40,7 @@
       <footer class="frame__bottom">
         <div class="slide-info">
           <span class="mono-xs" id="exposure-label">Exposure 001</span>
-          <h2 class="slide-title" id="slide-title">The Card<br/>Players</h2>
+          <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">The Card</span></span><span class="line-wrap"><span class="line">Players</span></span></h2>
         </div>
 
         <div class="frame__meta">
@@ -58,6 +58,18 @@
         <span class="mono-xs muted">By</span>
         <span class="mono-xs strong">Karim Saab</span>
       </div>
+    </div>
+
+    <!-- Peek view: opens when a frame is clicked -->
+    <div class="peek" id="peek" aria-hidden="true">
+      <div class="peek__backdrop"></div>
+      <img class="peek__image" id="peek-image" alt="" />
+      <div class="peek__meta">
+        <span class="mono-xs" id="peek-index">001 / 008</span>
+        <h3 class="peek__title" id="peek-title">The Card Players</h3>
+        <span class="mono-xs muted" id="peek-stock">35mm · Kodak Vision 250D</span>
+      </div>
+      <button class="peek__close" id="peek-close" aria-label="Close">Close · Esc</button>
     </div>
 
     <script type="module" src="/src/main.js"></script>
