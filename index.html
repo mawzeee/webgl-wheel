@@ -8,10 +8,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+    <!-- Inline bg so the very first paint is brown — no white flash before bundled CSS loads -->
+    <style>html, body { background: #15100B; margin: 0; }</style>
   </head>
   <body>
 
     <h1 class="bg-number" id="bg-number">01</h1>
+
+    <!-- Pre-loader: minimal, tiny mono counter on the dark cinema bg -->
+    <div class="pre-loader" id="pre-loader" aria-hidden="true">
+      <span id="pre-loader-pct">000</span>
+    </div>
 
     <div id="canvas-container"></div>
 
@@ -20,10 +27,8 @@
       <header class="frame__top">
         <h1 class="frame__title">Film Wheel</h1>
         <nav class="frame__nav">
-          <a href="#" class="link">Tutorial</a>
-          <a href="#" class="link">Article</a>
+          <a href="https://karim-saab.com" class="link" target="_blank">Portfolio</a>
           <a href="https://github.com/mawzeee/webgl-wheel" class="link" target="_blank">GitHub</a>
-          <a href="https://tympanus.net/codrops/demos/" class="link" target="_blank">All demos</a>
         </nav>
         <div class="frame__tags">
           <a href="#" class="tag">#webgl</a>

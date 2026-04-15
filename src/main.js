@@ -247,11 +247,9 @@ class WheelSlider {
     this.bgNumEl = document.getElementById('bg-number');
 
     this.scroll = 0;
-    this.scrollTarget = 0;
+    this.scrollTarget = 0; // free-running float — no snap; arrows re-integer it
     this.smoothBend = 0;
-    this.momentum = 0;
     this.dragging = false;
-    this.dragVelocity = 0;
     this.introBend = 1;   // 1 = fully cylinder at start
     this.introActive = true;
     this.frame = 0;
@@ -262,17 +260,23 @@ class WheelSlider {
     this.mouseX = 0; this.mouseY = 0;
     this.parallaxX = 0; this.parallaxY = 0;
     this.peekOpen = false;
-    this.transitioning = false;
     this.startTime = performance.now();
     this.audio = new AudioKit();
+    this.loadPct = 0;
 
     this.initScene();
-    this.loadTextures().then(() => {
+    // Wait for textures + loader + the serif font (canvas needs it for crisp text)
+    Promise.all([
+      this.loadTextures(),
+      this._runLoader(),
+      document.fonts.load('400 400px "Instrument Serif"').catch(() => {}),
+    ]).then(() => {
       this.createStrip();
+      this._createTextPlane();
       this.listen();
-      this.enter();
       this.initGUI();
       this.loop();
+      this.enter();
     });
   }
 
@@ -296,12 +300,14 @@ class WheelSlider {
 
   async loadTextures() {
     const loader = new THREE.TextureLoader();
+    let done = 0;
+    const mark = () => { done++; this.loadPct = done / IMAGE_PATHS.length; };
     this.textures = await Promise.all(IMAGE_PATHS.map(src =>
       new Promise(r => loader.load(src, t => {
         t.minFilter = THREE.LinearFilter;
         t.generateMipmaps = false;
-        r(t);
-      }, undefined, () => r(null)))
+        mark(); r(t);
+      }, undefined, () => { mark(); r(null); }))
     ));
   }
 
@@ -336,53 +342,55 @@ class WheelSlider {
       new THREE.PlaneGeometry(pw, ph, 32, 164),
       this.material
     );
+    // Fully offscreen below — enter() rises it into the silhouette position
+    // (-vp.h * 0.7) right after the loader fades, then later to center.
+    this.mesh.position.y = -vp.h * 1.6;
     this.scene.add(this.mesh);
   }
 
   listen() {
-    // ── Wheel: adds to momentum, not directly to target ──
+    // ── Wheel: Codrops-idiomatic — normalize delta, push target directly,
+    // let the loop's lerp do smoothing, snap to nearest frame 180ms after the
+    // last wheel event. No momentum variable, no per-event clamp.
+    const normalizeWheel = (e) => {
+      let py = e.deltaY;
+      if (e.deltaMode === 1) py *= 16;              // LINE mode (Firefox)
+      else if (e.deltaMode === 2) py *= window.innerHeight; // PAGE mode
+      return py;
+    };
+
+    // Wheel: free-scroll — delta goes straight to target, loop lerps. No snap.
     window.addEventListener('wheel', e => {
       if (this.introActive || this.peekOpen) return;
       this.audio.start();
-      this.momentum += e.deltaY * 0.0009;
-      this.momentum = Math.max(-0.3, Math.min(0.3, this.momentum));
+      const pY = normalizeWheel(e);
+      this.scrollTarget += pY * 0.0045;
       this.lastInputTime = performance.now();
     }, { passive: true });
 
-    // ── Pointer drag (mouse + touch unified) ──
-    let lastY = 0, lastTime = 0;
+    // ── Pointer drag — free-scroll, fractional target, lerp glides. No snap. ──
+    let lastY = 0;
 
     const startDrag = (y) => {
       if (this.introActive || this.peekOpen) return;
       this.audio.start();
       this.dragging = true;
-      this.momentum = 0;
-      this.dragVelocity = 0;
       lastY = y;
-      lastTime = performance.now();
       document.body.style.cursor = 'grabbing';
     };
 
     const moveDrag = (y) => {
       if (!this.dragging) return;
-      const now = performance.now();
-      const dt = Math.max(now - lastTime, 1);
       const dy = lastY - y;
       this.scrollTarget += dy * 0.0055;
       this.lastInputTime = performance.now();
-      // EMA velocity: smooth & recent-biased
-      const v = (dy / dt) * 16;
-      this.dragVelocity = this.dragVelocity * 0.4 + v * 0.6;
       lastY = y;
-      lastTime = now;
     };
 
     const endDrag = () => {
       if (!this.dragging) return;
       this.dragging = false;
       document.body.style.cursor = '';
-      // Transfer drag velocity → momentum
-      this.momentum = this.dragVelocity * 0.0055;
     };
 
     // Distinguish click from drag — threshold tracking
@@ -445,21 +453,8 @@ class WheelSlider {
   loop() {
     requestAnimationFrame(() => this.loop());
 
-    // Apply momentum (when not dragging)
-    if (!this.dragging && Math.abs(this.momentum) > 0.0002) {
-      this.scrollTarget += this.momentum;
-      this.momentum *= 0.93; // decay
-    } else if (!this.dragging) {
-      this.momentum = 0;
-    }
-
     const diff = this.scrollTarget - this.scroll;
     const vel = Math.abs(diff);
-
-    // Snap when idle (no drag, no momentum, low velocity)
-    if (!this.dragging && Math.abs(this.momentum) < 0.002 && vel < params.snapThreshold) {
-      this.scrollTarget += (Math.round(this.scrollTarget) - this.scrollTarget) * params.snapStrength;
-    }
 
     this.scroll += diff * params.scrollSmoothing;
     this.smoothBend += (Math.min(vel * params.bendSensitivity, 1) - this.smoothBend) * params.bendSmoothing;
@@ -467,8 +462,8 @@ class WheelSlider {
     // Combine intro bend (tweened) with interaction bend (velocity-driven)
     const finalBend = Math.max(this.smoothBend, this.introBend);
 
-    // Audio: hum volume tracks interaction energy (velocity + |momentum|)
-    const activity = Math.min(vel * 4 + Math.abs(this.momentum) * 4, 1);
+    // Audio: hum volume tracks interaction energy (lerp velocity only now)
+    const activity = Math.min(vel * 4, 1);
     this.audio.setActivity(activity);
 
     // ── 24fps sprocket tooth gate ──
@@ -512,69 +507,237 @@ class WheelSlider {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // ── Hero load sequence: strip unspools from below ──
+  // ── Hero sequence ──
+  // Loader fades → text uniform tweens 0→1 (shader dissolves text in via fbm
+  // noise) → hold → uniform 1→2 (shader dissolves text out) → bg brown→beige
+  // → film rises → chrome reveals. Text animation lives in GLSL; GSAP only
+  // nudges a single uniform value.
   enter() {
-    const vp = this.viewport();
-
-    // Start state
-    this.mesh.position.y = -vp.h * 0.7;
     this.introBend = 1.0;
 
-    // Initial title
     this.titleEl.innerHTML = TITLES[0];
     this.bgNumEl.textContent = '01';
     this.counterEl.textContent = '001 — 008';
     this.exposureEl.textContent = 'Exposure 001';
 
-    // Hide UI (avoid FOUC — set instantly)
-    gsap.set(['.frame__top', '.frame__counter', '.frame__bottom', '.nav-buttons', '#bg-number'], { opacity: 0 });
+    const preloaderEl = document.getElementById('pre-loader');
 
     const tl = gsap.timeline({
-      delay: 0.3,
-      onComplete: () => { this.introActive = false; },
+      onComplete: () => {
+        this.introActive = false;
+        // Drop the WebGL text plane after dissolve completes
+        if (this.textMesh) {
+          this.scene.remove(this.textMesh);
+          this.textMesh.geometry.dispose();
+          this.textMaterial.uniforms.uTex.value.dispose();
+          this.textMaterial.dispose();
+          this.textMesh = null;
+        }
+      },
     });
+
+    // ─────────────────────────────────────────────────────────────────
+    //  ACT 0  — loader fades out (bg stays brown)
+    // ─────────────────────────────────────────────────────────────────
+    tl.to(preloaderEl, { opacity: 0, duration: 0.3, ease: 'power2.in',
+      onComplete: () => preloaderEl?.remove() });
+
+    // ─────────────────────────────────────────────────────────────────
+    //  ACT 1  — ARRIVAL (1.2s, all three motions decelerate together)
+    //   silhouette rises · wheel spins 2 frames · text dissolves in
+    //   shared ease (power3.out) and shared duration → single landing
+    // ─────────────────────────────────────────────────────────────────
+    const vp = this.viewport();
+    const arriveDur = 1.2;
+    const arriveEase = 'power3.out';
+
+    tl.to(this.mesh.position, {
+      y: -vp.h * 0.7,
+      duration: arriveDur,
+      ease: arriveEase,
+    }, '-=0.1');
+
+    tl.to(this, {
+      scroll: 2,
+      scrollTarget: 2,
+      duration: arriveDur,
+      ease: arriveEase,
+    }, '<');
+
+    tl.to(this.textMaterial.uniforms.uProgress, {
+      value: 1.0,
+      duration: arriveDur,
+      ease: arriveEase,
+    }, '<');
+
+    // ─────────────────────────────────────────────────────────────────
+    //  ACT 2  — HOLD (0.5s breath, generous)
+    //   bent silhouette + cream title + brown bg, all still
+    // ─────────────────────────────────────────────────────────────────
+    tl.addLabel('hold', '+=0.5');
+
+    // ─────────────────────────────────────────────────────────────────
+    //  ACT 3  — TRANSITION (0.65s, single visual event)
+    //   text fades + bg shifts together, perfectly synchronized
+    // ─────────────────────────────────────────────────────────────────
+    const fadeDur = 0.65;
+    const fadeEase = 'power2.inOut';
+
+    tl.to(this.textMaterial.uniforms.uAlpha, {
+      value: 0,
+      duration: fadeDur,
+      ease: fadeEase,
+    }, 'hold');
+
+    tl.to(document.body, {
+      backgroundColor: '#F0EAE0',
+      duration: fadeDur,
+      ease: fadeEase,
+    }, 'hold');
+
+    // ─────────────────────────────────────────────────────────────────
+    //  ACT 4  — HERO (1.0s, climactic)
+    //   silhouette → centered, bend unfolds, chrome reveals on tail
+    // ─────────────────────────────────────────────────────────────────
+    tl.addLabel('hero', 'hold+=0.55');
 
     tl.to(this.mesh.position, {
       y: 0,
-      duration: 1.9,
+      duration: 1.0,
       ease: 'power3.out',
-    });
+    }, 'hero');
 
     tl.to(this, {
       introBend: 0,
-      duration: 1.7,
+      duration: 0.9,
       ease: 'power2.out',
-    }, '<+=0.25');
+    }, 'hero+=0.1');
 
-    tl.to('#bg-number', {
-      opacity: 0.05,
-      duration: 1.4,
-      ease: 'power2.out',
-    }, '-=1.4');
+    // Chrome reveals on the wheel's deceleration tail — gentle staircase
+    tl.to('#bg-number',     { opacity: 0.05, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
+    tl.to('.frame__top',    { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
+    tl.to('.frame__counter',{ opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.65');
+    tl.to('.frame__bottom', { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
+    tl.to('.nav-buttons',   { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.75');
+  }
 
-    tl.to('.frame__top', {
-      opacity: 1,
-      duration: 0.6,
-      ease: 'power2.out',
-    }, '-=0.9');
+  // ── WebGL text plane: serif "Film / Wheel" rendered to a high-res 2D
+  //    canvas, used as the texture on a plane in front of the scene with an
+  //    fbm-dissolve shader. The text animation is done entirely in GLSL. ──
+  _createTextPlane() {
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    const W = 3072, H = 640;          // one-line aspect (~4.8:1)
+    const canvas = document.createElement('canvas');
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = '#EFE6D6';
+    ctx.font = 'normal 400 380px "Instrument Serif", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Film Wheel', W / 2, H / 2);
 
-    tl.to('.frame__counter', {
-      opacity: 1,
-      duration: 0.6,
-      ease: 'power2.out',
-    }, '-=0.55');
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
-    tl.to('.frame__bottom', {
-      opacity: 1,
-      duration: 0.6,
-      ease: 'power2.out',
-    }, '-=0.5');
+    this.textMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        uTex: { value: tex },
+        uProgress: { value: 0 }, // dissolve-in driver (0 → 1)
+        uAlpha: { value: 1.0 },  // global opacity for clean fade-with-bg exit
+      },
+      vertexShader: /* glsl */`
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision highp float;
+        uniform sampler2D uTex;
+        uniform float uProgress;
+        uniform float uAlpha;
+        varying vec2 vUv;
 
-    tl.to('.nav-buttons', {
-      opacity: 1,
-      duration: 0.6,
-      ease: 'power2.out',
-    }, '-=0.5');
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        float vnoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+            mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+            f.y
+          );
+        }
+        float fbm(vec2 p) {
+          float v = 0.0;
+          float a = 0.5;
+          for (int i = 0; i < 4; i++) {
+            v += a * vnoise(p);
+            p *= 2.02;
+            a *= 0.5;
+          }
+          return v;
+        }
+
+        void main() {
+          vec4 t = texture2D(uTex, vUv);
+          // Organic dissolve mask — multi-octave noise field
+          float n = fbm(vUv * vec2(3.5, 5.0) + vec2(0.0, vUv.x * 1.5));
+          // Single-phase reveal: 0 → 1. Exit is just uAlpha → 0 (clean fade).
+          float alpha = 1.0 - smoothstep(uProgress - 0.18, uProgress + 0.06, n);
+          gl_FragColor = vec4(t.rgb, t.a * alpha * uAlpha);
+        }
+      `,
+    });
+
+    // Behind the film: z=-1 (further from camera than film at z=0). Three.js
+    // sorts transparents back-to-front, so film draws over the text where
+    // they overlap. Plane sized for that depth so text reads at ~65% viewport.
+    const z = -1;
+    const dist = CAMERA_Z - z;
+    const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    const visW = visH * this.camera.aspect;
+    const planeW = visW * 1.25;   // bleeds slightly past viewport — huge
+    const planeH = planeW * (H / W);
+
+    this.textMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(planeW, planeH),
+      this.textMaterial
+    );
+    this.textMesh.position.z = z;
+    this.textMesh.renderOrder = -1;   // explicitly behind the film
+    this.scene.add(this.textMesh);
+  }
+
+  // ── Loader ticker: animates % from 0→100 over min duration, clamped to
+  //    actual texture load. Resolves only when BOTH are complete (honest). ──
+  _runLoader() {
+    const pctEl = document.getElementById('pre-loader-pct');
+    const MIN_LOAD_MS = 350;
+    const t0 = performance.now();
+    return new Promise(resolve => {
+      const tick = () => {
+        const elapsed = performance.now() - t0;
+        const animated = Math.min(elapsed / MIN_LOAD_MS, 1);
+        const actual = this.loadPct || 0;
+        const effective = Math.min(animated, actual);
+        if (pctEl) pctEl.textContent = String(Math.floor(effective * 100)).padStart(3, '0');
+        if (effective < 1) requestAnimationFrame(tick);
+        else resolve();
+      };
+      tick();
+    });
   }
 
   // Peek — opens a fullscreen projected view of the current centered frame
@@ -598,47 +761,22 @@ class WheelSlider {
     peek.classList.remove('open');
   }
 
-  // Split-line title reveal: wraps each line in a clip-mask and animates
+  // Title swap: instant — stays readable during fast scroll, no overlap artifacts
   swapTitle(html) {
-    const lines = html.split(/<br\s*\/?>/i);
-    const oldLines = this.titleEl.querySelectorAll('.line');
-
-    // Animate current lines OUT, then swap and animate IN
-    const outTween = oldLines.length
-      ? gsap.to(oldLines, { y: '-105%', duration: 0.35, stagger: 0.04, ease: 'power3.in' })
-      : Promise.resolve();
-
-    const doSwap = () => {
-      this.titleEl.innerHTML = lines
-        .map(t => `<span class="line-wrap"><span class="line">${t}</span></span>`)
-        .join('');
-      const newLines = this.titleEl.querySelectorAll('.line');
-      gsap.fromTo(newLines,
-        { y: '105%' },
-        { y: '0%', duration: 0.55, stagger: 0.06, ease: 'power3.out' }
-      );
-    };
-
-    if (outTween.then) doSwap();
-    else outTween.eventCallback('onComplete', doSwap);
+    this.titleEl.innerHTML = html;
   }
 
   checkFrame() {
     const raw = ((this.scroll % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
     const f = Math.round(raw) % IMAGE_COUNT;
-    if (f === this.frame || this.transitioning) return;
+    if (f === this.frame) return;
     this.frame = f;
-    this.transitioning = true;
 
     const num = String(f + 1).padStart(3, '0');
-
-    // Split-letter title reveal (line-wise clip reveal)
     this.swapTitle(TITLES[f]);
     this.exposureEl.textContent = `Exposure ${num}`;
     this.counterEl.textContent = `${num} — 008`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
-
-    this.transitioning = false;
   }
 
   // ── Tweakpane (hidden by default, toggle with D) ──

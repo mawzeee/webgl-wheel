@@ -2,6 +2,7 @@
 
 :root {
   --bg: #F0EAE0;
+  --bg-dark: #15100B;    /* cinema-before-projection — default on page load */
   --ink: #141210;
   --muted: #8A7E74;
   --faint: #C7BCAE;
@@ -20,7 +21,7 @@ body {
   width: 100vw;
   height: 100dvh;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-dark);   /* starts dark; GSAP fades to --bg post-loader */
   font-family: var(--mono);
   font-size: var(--chrome);
   color: var(--ink);
@@ -38,7 +39,7 @@ body {
   line-height: 0.8;
   letter-spacing: -0.04em;
   color: var(--ink);
-  opacity: 0.05;
+  opacity: 0; /* GSAP reveals to 0.05 after prelude */
   pointer-events: none;
   user-select: none;
   z-index: 1;
@@ -75,6 +76,7 @@ canvas { display: block; width: 100%; height: 100%; }
   display: flex;
   flex-direction: column;
   gap: 6px;
+  opacity: 0; /* revealed by GSAP after prelude */
 }
 
 .frame__counter {
@@ -85,6 +87,7 @@ canvas { display: block; width: 100%; height: 100%; }
   text-transform: uppercase;
   color: var(--muted);
   align-self: start;
+  opacity: 0;
 }
 
 .frame__bottom {
@@ -94,6 +97,7 @@ canvas { display: block; width: 100%; height: 100%; }
   justify-content: space-between;
   align-items: flex-end;
   gap: 48px;
+  opacity: 0;
 }
 
 .nav-buttons {
@@ -104,6 +108,7 @@ canvas { display: block; width: 100%; height: 100%; }
   align-self: end;
   justify-self: end;
   transform: translateY(-44px);
+  opacity: 0;
 }
 
 /* ── Typography ── */
@@ -330,6 +335,30 @@ canvas { display: block; width: 100%; height: 100%; }
   pointer-events: auto !important;
   cursor: pointer;
 }
+
+/* ── Pre-loader: tiny mono counter on the dark cinema bg ── */
+
+.pre-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: var(--micro);
+  letter-spacing: 0.32em;
+  color: #EFE6D6;
+  opacity: 0.78;
+  pointer-events: none;
+  user-select: none;
+  font-feature-settings: 'tnum' 1;
+}
+
+.pre-loader::before { content: '[ '; color: rgba(239, 230, 214, 0.5); }
+.pre-loader::after { content: ' ]'; color: rgba(239, 230, 214, 0.5); }
+
+/* Title is rendered as a Three.js plane with a custom dissolve shader (no DOM). */
 
 /* ── Tweakpane overrides ── */
 
