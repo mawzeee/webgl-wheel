@@ -19,6 +19,7 @@ const TITLES = [
   'Red Moon<br/>Rising',
 ];
 
+
 const params = {
   stripWidth: 0.32,
   stripHeight: 2.8,
@@ -287,6 +288,7 @@ class WheelSlider {
     const h = CAMERA_Z * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) * 2;
     return { w: h * this.camera.aspect, h };
   }
+
 
   async loadTextures() {
     const loader = new THREE.TextureLoader();
