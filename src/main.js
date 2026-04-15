@@ -20,18 +20,18 @@ const TITLES = [
 ];
 
 const params = {
-  stripWidth: 0.26,
-  stripHeight: 1.1,
-  wrapAngle: 1.6,
-  bendSensitivity: 1,
+  stripWidth: 0.32,
+  stripHeight: 2.8,
+  wrapAngle: 4.4,
+  bendSensitivity: 2,
   bendSmoothing: 0.04,
   scrollSpeed: 0.009,
-  scrollSmoothing: 0.07,
+  scrollSmoothing: 0.11,
   snapStrength: 0.048,
   snapThreshold: 0.09,
   filmStrength: 1.0,
-  filmBaseStrength: 0.15,
-  grainAmount: 0.06,
+  filmBaseStrength: 0,
+  grainAmount: 0.15,
   shadeExponent: 2.0,
   borderWidth: 0.04,
   sprocketsPerImage: 3,
@@ -53,13 +53,9 @@ void main() {
   float angleV = pos.y / uRadius;
   pos.y = mix(pos.y, uRadius * sin(angleV), uBend);
 
-  // Secondary: horizontal barrel (gentler, rounds top/bottom edges)
-  float hRadius = uRadius * 2.5;
-  float angleH = pos.x / hRadius;
-  pos.x = mix(pos.x, hRadius * sin(angleH), uBend);
-
-  // Combined Z depth from both curvatures
-  pos.z = mix(0.0, uRadius * (cos(angleV) - 1.0) + hRadius * (cos(angleH) - 1.0), uBend);
+  // Remove horizontal barrel: film only bends along one axis when tightly wrapped on a cylinder.
+  // The horizontal barrel made it look pinched and balloon-like at the edges.
+  pos.z = mix(0.0, uRadius * (cos(angleV) - 1.0), uBend);
 
   vNDotV = cos(mix(0.0, angleV, uBend));
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
@@ -71,7 +67,7 @@ precision highp float;
 
 uniform sampler2D tex0, tex1, tex2, tex3, tex4, tex5, tex6, tex7;
 uniform float uProgress, uBend, uSlotH, uFilmStrength, uFilmBase;
-uniform float uShadeExponent, uTime, uGrain, uBorderW, uSprockets;
+uniform float uShadeExponent, uTime, uGrain, uBorderW, uSprockets, uShutter;
 varying vec2 vUv;
 varying float vNDotV;
 
@@ -90,6 +86,16 @@ float hash1(float x) { return fract(sin(x * 12.9898) * 43758.5453); }
 float sdRoundBox(vec2 p, vec2 b, float r) {
   vec2 q = abs(p) - b + r;
   return length(max(q, 0.0)) - r;
+}
+
+
+vec3 filmGrade(vec3 c) {
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  float s = l * l * (3.0 - 2.0 * l);
+  return mix(
+    vec3(mix(0.13,0.94,pow(s,0.78)), mix(0.08,0.84,pow(s,0.86)), mix(0.04,0.48,pow(s,1.20))),
+    c * vec3(0.95, 0.80, 0.58), 0.2
+  );
 }
 
 // ─── Film imperfections ───
@@ -134,12 +140,10 @@ vec3 lightLeak(vec2 uv, float t) {
   float bucket = floor(t * 0.12);
   float life = fract(t * 0.12);
   float env = smoothstep(0.0, 0.3, life) * smoothstep(1.0, 0.7, life);
-  // Only emit some of the time
   if (hash1(bucket) < 0.55) return vec3(0.0);
   vec2 c = vec2(hash1(bucket + 1.3), hash1(bucket + 9.7));
   float r = 0.25 + 0.18 * hash1(bucket + 2.1);
   float falloff = smoothstep(r, 0.0, length(uv - c));
-  // Warm amber only, desaturated
   vec3 warm = vec3(0.85, 0.55, 0.28);
   return warm * falloff * env * 0.08;
 }
@@ -154,15 +158,6 @@ vec3 dyeShift(vec3 c, float frameIdx) {
   float lift = (hash1(frameIdx + 3.7) - 0.5) * 0.025;
   float gain = 1.0 + (hash1(frameIdx + 5.2) - 0.5) * 0.05;
   return clamp((c + lift) * gain * tint, 0.0, 1.0);
-}
-
-vec3 filmGrade(vec3 c) {
-  float l = dot(c, vec3(0.299, 0.587, 0.114));
-  float s = l * l * (3.0 - 2.0 * l);
-  return mix(
-    vec3(mix(0.13,0.94,pow(s,0.78)), mix(0.08,0.84,pow(s,0.86)), mix(0.04,0.48,pow(s,1.20))),
-    c * vec3(0.95, 0.80, 0.58), 0.2
-  );
 }
 
 void main() {
@@ -200,26 +195,12 @@ void main() {
   int idx = int(floor(w));
   float lv = fract(w);
 
-  vec2 imgUV = vec2(u, 1.0 - lv);
-  vec4 color = sampleImage(idx, imgUV);
-
-  // Film color grade
+  vec4 color = sampleImage(idx, vec2(u, 1.0 - lv));
+  // Film grade intensifies with scroll velocity
   color.rgb = mix(color.rgb, filmGrade(color.rgb), mix(uFilmBase, uFilmStrength, uBend));
-
-  // Per-frame dye shift (each frame aged differently)
-  color.rgb = dyeShift(color.rgb, float(idx));
-
-  // Scratches (darken)
-  color.rgb -= vec3(scratches(imgUV, scrollV)) * 0.18;
-  // Hair (darken)
-  color.rgb -= vec3(hair(imgUV, scrollV)) * 0.45;
-  // Dust (brighten)
-  color.rgb += vec3(dust(imgUV, scrollV)) * 0.35;
-  // Light leaks (warm additive)
-  color.rgb += lightLeak(imgUV, uTime);
-
   color.rgb *= cylShade;
   color.rgb += grain - uGrain * 0.5;
+  // Shutter flash removed — was causing visible pulsing
 
   float vx = smoothstep(0.0,0.06,u)*smoothstep(1.0,0.94,u);
   float vy = smoothstep(0.0,0.04,lv)*smoothstep(1.0,0.96,lv);
@@ -273,8 +254,11 @@ class WheelSlider {
     this.introBend = 1;   // 1 = fully cylinder at start
     this.introActive = true;
     this.frame = 0;
+    this.lastTooth = 0;
+    this.shutterFlash = 0;
+    this.lastInputTime = 0;
     this.transitioning = false;
-    this.clock = new THREE.Clock();
+    this.startTime = performance.now();
     this.audio = new AudioKit();
 
     this.initScene();
@@ -338,6 +322,7 @@ class WheelSlider {
         uTime: { value: 0 }, uGrain: { value: params.grainAmount },
         uBorderW: { value: params.borderWidth },
         uSprockets: { value: params.sprocketsPerImage },
+        uShutter: { value: 0 },
       },
     });
 
@@ -353,8 +338,9 @@ class WheelSlider {
     window.addEventListener('wheel', e => {
       if (this.introActive) return;
       this.audio.start();
-      this.momentum += e.deltaY * 0.0004;
-      this.momentum = Math.max(-0.18, Math.min(0.18, this.momentum));
+      this.momentum += e.deltaY * 0.0009;
+      this.momentum = Math.max(-0.3, Math.min(0.3, this.momentum));
+      this.lastInputTime = performance.now();
     }, { passive: true });
 
     // ── Pointer drag (mouse + touch unified) ──
@@ -377,6 +363,7 @@ class WheelSlider {
       const dt = Math.max(now - lastTime, 1);
       const dy = lastY - y;
       this.scrollTarget += dy * 0.0055;
+      this.lastInputTime = performance.now();
       // EMA velocity: smooth & recent-biased
       const v = (dy / dt) * 16;
       this.dragVelocity = this.dragVelocity * 0.4 + v * 0.6;
@@ -450,10 +437,27 @@ class WheelSlider {
     const activity = Math.min(vel * 4 + Math.abs(this.momentum) * 4, 1);
     this.audio.setActivity(activity);
 
+    // ── 24fps sprocket tooth gate ──
+    // Only fires while user is actively providing input (last 180ms).
+    const teeth = params.sprocketsPerImage;
+    const currentTooth = Math.floor(this.scroll * teeth);
+    const userActive = performance.now() - this.lastInputTime < 180;
+    if (currentTooth !== this.lastTooth && !this.introActive && userActive) {
+      this.lastTooth = currentTooth;
+      this.shutterFlash = 1;
+      this.audio.snap();
+    } else if (currentTooth !== this.lastTooth) {
+      // Silent catch-up during momentum decay — no flash, no click
+      this.lastTooth = currentTooth;
+    }
+    // Fast decay — flash dies to ~zero in 4-5 frames, no hard snap needed
+    this.shutterFlash *= 0.55;
+
     const u = this.material.uniforms;
     u.uProgress.value = this.scroll;
     u.uBend.value = finalBend;
-    u.uTime.value = this.clock.getElapsedTime();
+    u.uTime.value = (performance.now() - this.startTime) / 1000;
+    u.uShutter.value = this.shutterFlash;
     // Live-bind Tweakpane params
     u.uFilmStrength.value = params.filmStrength;
     u.uFilmBase.value = params.filmBaseStrength;
@@ -544,9 +548,6 @@ class WheelSlider {
     this.counterEl.textContent = `${num} — 008`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
 
-    // Projector click on frame change
-    this.audio.snap();
-
     this.transitioning = false;
   }
 
@@ -556,7 +557,7 @@ class WheelSlider {
     const strip = pane.addFolder({ title: 'Strip' });
     strip.addBinding(params, 'stripWidth', { min: 0.15, max: 0.65, step: 0.01 })
       .on('change', () => this.rebuildStrip());
-    strip.addBinding(params, 'stripHeight', { min: 0.5, max: 2.5, step: 0.05 })
+    strip.addBinding(params, 'stripHeight', { min: 0.5, max: 5.0, step: 0.05 })
       .on('change', () => this.rebuildStrip());
     strip.addBinding(params, 'wrapAngle', { min: 1.0, max: 6.0, step: 0.1 })
       .on('change', () => this.rebuildStrip());
