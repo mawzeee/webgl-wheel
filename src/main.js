@@ -3,20 +3,41 @@ import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { Pane } from 'tweakpane';
 
-const IMAGE_PATHS = Array.from({ length: 8 }, (_, i) => `/images/slide-${i + 1}.png`);
-const IMAGE_COUNT = 8;
+const IMAGE_COUNT = 25;
+const ATLAS_COLS = 5;
+const ATLAS_ROWS = 5;
+const IMAGE_PATHS = Array.from({ length: IMAGE_COUNT }, (_, i) => `/images/slide-${i + 1}.avif`);
 const FOV = 50;
 const CAMERA_Z = 5;
 
+// Sequenced for contrast — alternating bright/dark, group/solo, chaos/calm
+// Titles per slide — dark-humor editorial
 const TITLES = [
-  'The Card<br/>Players',
-  'The<br/>Reader',
-  'Saturn\'s<br/>Table',
-  'The<br/>Dreamer',
-  'The<br/>Feast',
-  'Night<br/>Curtain',
-  'Still<br/>Life',
-  'Red Moon<br/>Rising',
+  'Please<br/>Don\'t Vomit',     // slide-1: rollercoaster + cotton candy
+  'Cult<br/>Starter Pack',       // slide-2: red moon, desert, brass bowls
+  'Love<br/>— All',              // slide-3: tennis court, flying balls
+  'Seppuku<br/>at Dawn',         // slide-4: samurai at shrine
+  'Main<br/>Character',          // slide-5: 3 girls w/ popcorn, fisheye
+  'Dining<br/>with Saturn',      // slide-6: pizza under Saturn rings
+  'Tan Line<br/>Divorce',        // slide-7: blue top, palm tree
+  'Delayed<br/>47 Minutes',      // slide-8: subway platform, lone figure
+  'Carbs Before<br/>Boys',       // slide-9: blonde w/ donut
+  'Tarot or<br/>Therapy',        // slide-10: moonlit card game
+  'Lactose<br/>Intolerant',      // slide-11: couple w/ ice cream, messy
+  'Rent Is<br/>Overdue',         // slide-12: Paris café dusk
+  'Trust Fund<br/>Puppy',        // slide-13: dog reading in bathtub
+  'Stop<br/>Calling',            // slide-14: orange phone, donuts, red eye
+  'Wimbledon<br/>Getaway',       // slide-15: shopping cart of tennis balls
+  'They<br/>Bite',               // slide-16: pink Ferrari + dogs
+  'Mate<br/>in Mink',            // slide-17: chess, fur coat
+  'Post-Wedding<br/>Uber',       // slide-18: pink moon over city, family
+  'Sister<br/>Wives',            // slide-19: two girls, sunglasses
+  'Boiler Room<br/>Intern',      // slide-20: DJs w/ fans
+  'Fashion<br/>Victim',          // slide-21: cat in red puffer + lollipop
+  'Summit of<br/>Spite',         // slide-22: chess on mountain
+  'Therapy<br/>Deductible',      // slide-23: 4 guys overhead w/ pizza
+  'He Left,<br/>I Kept It',      // slide-24: girl w/ pizza in bed
+  'Never<br/>Released',          // slide-25: synth studio w/ coffee
 ];
 
 
@@ -30,9 +51,15 @@ const params = {
   scrollSmoothing: 0.11,
   snapStrength: 0.048,
   snapThreshold: 0.09,
-  filmStrength: 1.0,
-  filmBaseStrength: 0,
-  grainAmount: 0.15,
+  filmStrength: 0.85,       // film grade on scroll (slightly pulled back)
+  filmBaseStrength: 0.08,   // subtle film hint at rest
+  grainAmount: 0.09,        // present but not noisy
+  // Image look — a gentle editorial polish at rest
+  exposure: 1.02,           // slight overall lift
+  brightness: 0.0,
+  contrast: 1.1,            // subtle S-curve punch
+  saturation: 1.08,         // gentle vibrance
+  vignetteStrength: 0.22,
   shadeExponent: 2.0,
   borderWidth: 0.04,
   sprocketsPerImage: 3,
@@ -66,19 +93,25 @@ void main() {
 const fragmentShader = /* glsl */ `
 precision highp float;
 
-uniform sampler2D tex0, tex1, tex2, tex3, tex4, tex5, tex6, tex7;
+uniform sampler2D uAtlas;
+uniform float uAtlasCols; // e.g. 5 for a 5×5 grid
+uniform float uAtlasRows;
 uniform float uProgress, uBend, uSlotH, uFilmStrength, uFilmBase;
 uniform float uShadeExponent, uTime, uGrain, uBorderW, uSprockets, uShutter;
+uniform float uExposure, uBrightness, uContrast, uSaturation, uVignette;
 varying vec2 vUv;
 varying float vNDotV;
 
+// Sample the i-th cell of a uniform grid atlas at local UV.
 vec4 sampleImage(int i, vec2 uv) {
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(0.0);
-  if (i==0) return texture2D(tex0,uv); if (i==1) return texture2D(tex1,uv);
-  if (i==2) return texture2D(tex2,uv); if (i==3) return texture2D(tex3,uv);
-  if (i==4) return texture2D(tex4,uv); if (i==5) return texture2D(tex5,uv);
-  if (i==6) return texture2D(tex6,uv); if (i==7) return texture2D(tex7,uv);
-  return vec4(0.0);
+  float fi = float(i);
+  float col = mod(fi, uAtlasCols);
+  float row = floor(fi / uAtlasCols);
+  // Clamp UV slightly inside the cell to prevent bilinear bleed from neighbors
+  vec2 clamped = clamp(uv, vec2(0.001), vec2(0.999));
+  vec2 cellUV = (vec2(col, row) + clamped) / vec2(uAtlasCols, uAtlasRows);
+  return texture2D(uAtlas, cellUV);
 }
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
@@ -192,20 +225,29 @@ void main() {
   }
 
   float u = (vUv.x-bw)/(1.0-2.0*bw);
-  float w = mod(scrollV, 8.0);
+  float w = mod(scrollV, 25.0);
   int idx = int(floor(w));
   float lv = fract(w);
 
-  vec4 color = sampleImage(idx, vec2(u, 1.0 - lv));
+  // With flipY=false on the atlas, canvas y=0 (image top) maps to UV.y=0.
+  // On the strip, lv=0 is the upper part of the visible slot — so pass lv directly.
+  vec4 color = sampleImage(idx, vec2(u, lv));
+
+  // ── Image look adjustments (GUI-controlled) ──
+  color.rgb *= uExposure;                                  // exposure (linear gain)
+  color.rgb += uBrightness;                                // brightness (additive)
+  color.rgb = (color.rgb - 0.5) * uContrast + 0.5;         // contrast around 0.5
+  float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));  // saturation toward luma
+  color.rgb = mix(vec3(luma), color.rgb, uSaturation);
+
   // Film grade intensifies with scroll velocity
   color.rgb = mix(color.rgb, filmGrade(color.rgb), mix(uFilmBase, uFilmStrength, uBend));
   color.rgb *= cylShade;
   color.rgb += grain - uGrain * 0.5;
-  // Shutter flash removed — was causing visible pulsing
 
   float vx = smoothstep(0.0,0.06,u)*smoothstep(1.0,0.94,u);
   float vy = smoothstep(0.0,0.04,lv)*smoothstep(1.0,0.96,lv);
-  color.rgb *= mix(1.0, vx*vy, 0.25);
+  color.rgb *= mix(1.0, vx*vy, uVignette);
 
   gl_FragColor = vec4(color.rgb, alpha);
 }
@@ -287,6 +329,11 @@ class WheelSlider {
     this.camera = new THREE.PerspectiveCamera(FOV, w / h, 0.1, 100);
     this.camera.position.z = CAMERA_Z;
     this.renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    // LinearSRGBColorSpace output = no encoding at framebuffer write.
+    // Paired with texture.colorSpace=NoColorSpace above: sRGB data flows
+    // unmodified from canvas → GPU → screen.
+    this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+    this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.setSize(w, h);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.container.appendChild(this.renderer.domElement);
@@ -299,16 +346,63 @@ class WheelSlider {
 
 
   async loadTextures() {
-    const loader = new THREE.TextureLoader();
+    // Load all 25 as ImageBitmaps (preserves source colorspace, no sRGB clipping),
+    // then pack into a single 5×5 atlas texture at native resolution.
+    // WebGL has MAX_TEXTURE_IMAGE_UNITS limits (≥16) — a single atlas sidesteps them.
     let done = 0;
     const mark = () => { done++; this.loadPct = done / IMAGE_PATHS.length; };
-    this.textures = await Promise.all(IMAGE_PATHS.map(src =>
-      new Promise(r => loader.load(src, t => {
-        t.minFilter = THREE.LinearFilter;
-        t.generateMipmaps = false;
-        mark(); r(t);
-      }, undefined, () => { mark(); r(null); }))
-    ));
+
+    const bitmaps = await Promise.all(IMAGE_PATHS.map(async src => {
+      try {
+        const res = await fetch(src);
+        const blob = await res.blob();
+        const bm = await createImageBitmap(blob, {
+          // 'default' = browser honors the source ICC profile (AVIFs often
+          // ship in P3). 'none' drops the profile and reinterprets as sRGB,
+          // which visibly darkens wide-gamut images.
+          colorSpaceConversion: 'default',
+          imageOrientation: 'from-image',
+          premultiplyAlpha: 'default',
+        });
+        mark();
+        return bm;
+      } catch (e) {
+        mark();
+        return null;
+      }
+    }));
+
+    // Use native resolution (1024) so no downscale-softening
+    const CELL = 1024;
+    const canvas = document.createElement('canvas');
+    canvas.width = CELL * ATLAS_COLS;
+    canvas.height = CELL * ATLAS_ROWS;
+    // Explicit sRGB ctx — avoids any implicit color profile conversion
+    const ctx = canvas.getContext('2d', { colorSpace: 'srgb' });
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    bitmaps.forEach((bm, i) => {
+      if (!bm) return;
+      const c = i % ATLAS_COLS;
+      const r = Math.floor(i / ATLAS_COLS);
+      ctx.drawImage(bm, c * CELL, r * CELL, CELL, CELL);
+    });
+
+    this.atlas = new THREE.CanvasTexture(canvas);
+    // flipY=true (the Three.js default) inverts row 0 ↔ row 4 during upload,
+    // so sampling cell (col,0) returned bitmap content from cell (col,4) —
+    // images were 20 indices off. Keep canvas orientation as drawn.
+    this.atlas.flipY = false;
+    this.atlas.minFilter = THREE.LinearFilter;
+    this.atlas.magFilter = THREE.LinearFilter;
+    this.atlas.generateMipmaps = false;
+    // NoColorSpace = no auto-decode on sample. Custom ShaderMaterial doesn't
+    // auto re-encode at output, so we keep values flowing through as-is.
+    // This preserves the sRGB-correct canvas data end-to-end.
+    this.atlas.colorSpace = THREE.NoColorSpace;
+    this.atlas.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+
+    this.images = bitmaps;
   }
 
   createStrip() {
@@ -321,10 +415,9 @@ class WheelSlider {
       vertexShader, fragmentShader,
       transparent: true, side: THREE.FrontSide,
       uniforms: {
-        tex0: { value: this.textures[0] }, tex1: { value: this.textures[1] },
-        tex2: { value: this.textures[2] }, tex3: { value: this.textures[3] },
-        tex4: { value: this.textures[4] }, tex5: { value: this.textures[5] },
-        tex6: { value: this.textures[6] }, tex7: { value: this.textures[7] },
+        uAtlas: { value: this.atlas },
+        uAtlasCols: { value: ATLAS_COLS },
+        uAtlasRows: { value: ATLAS_ROWS },
         uProgress: { value: 0 }, uBend: { value: 0 },
         uRadius: { value: ph / params.wrapAngle },
         uSlotH: { value: imgW / ph },
@@ -335,6 +428,11 @@ class WheelSlider {
         uBorderW: { value: params.borderWidth },
         uSprockets: { value: params.sprocketsPerImage },
         uShutter: { value: 0 },
+        uExposure: { value: params.exposure },
+        uBrightness: { value: params.brightness },
+        uContrast: { value: params.contrast },
+        uSaturation: { value: params.saturation },
+        uVignette: { value: params.vignetteStrength },
       },
     });
 
@@ -399,15 +497,38 @@ class WheelSlider {
       downY = e.clientY; downX = e.clientX; downT = performance.now();
       startDrag(e.clientY);
     });
+    // Raycaster for click→slot lookup
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
     window.addEventListener('pointerup', e => {
       const dx = Math.abs(e.clientX - downX);
       const dy = Math.abs(e.clientY - downY);
       const dt = performance.now() - downT;
-      // If barely moved + quick: treat as click → open peek on current frame
+      // If barely moved + quick: treat as click → open peek on THE clicked image
       if (dx < 6 && dy < 6 && dt < 300 && !this.peekOpen) {
         const tgt = e.target;
-        // Only open peek when clicking on canvas area (ignore UI clicks)
-        if (tgt && tgt.tagName === 'CANVAS') this.openPeek();
+        if (!tgt || tgt.tagName !== 'CANVAS' || !this.mesh) return;
+
+        // Raycast into the strip to find which UV the click hit
+        pointer.x = (e.clientX / window.innerWidth) * 2 - 1;
+        pointer.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(pointer, this.camera);
+        const hits = raycaster.intersectObject(this.mesh);
+        if (!hits.length || !hits[0].uv) return;
+
+        const uv = hits[0].uv;
+
+        // Skip clicks on the sprocket borders (sides of the strip)
+        if (uv.x < params.borderWidth || uv.x > 1 - params.borderWidth) return;
+
+        // Mirror the fragment shader's slot math to find the clicked image index
+        const numSlots = 1 / this.material.uniforms.uSlotH.value;
+        const scrollV = (1 - uv.y) * numSlots + this.scroll - numSlots * 0.5 + 0.5;
+        const wrapped = ((scrollV % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
+        const f = Math.floor(wrapped) % IMAGE_COUNT;
+
+        this.openPeek(f);
       }
     });
     window.addEventListener('pointermove', e => {
@@ -493,6 +614,11 @@ class WheelSlider {
     u.uGrain.value = params.grainAmount;
     u.uBorderW.value = params.borderWidth;
     u.uSprockets.value = params.sprocketsPerImage;
+    u.uExposure.value = params.exposure;
+    u.uBrightness.value = params.brightness;
+    u.uContrast.value = params.contrast;
+    u.uSaturation.value = params.saturation;
+    u.uVignette.value = params.vignetteStrength;
 
     // Cursor parallax — smoothed tilt based on mouse position
     this.parallaxX += (this.mouseX - this.parallaxX) * 0.06;
@@ -517,7 +643,7 @@ class WheelSlider {
 
     this.titleEl.innerHTML = TITLES[0];
     this.bgNumEl.textContent = '01';
-    this.counterEl.textContent = '001 — 008';
+    this.counterEl.textContent = '001 — 025';
     this.exposureEl.textContent = 'Exposure 001';
 
     const preloaderEl = document.getElementById('pre-loader');
@@ -741,11 +867,23 @@ class WheelSlider {
   }
 
   // Peek — opens a fullscreen projected view of the current centered frame
-  openPeek() {
+  // Accepts an explicit frame index (from raycast click). Falls back to
+  // the currently-centered frame if not provided.
+  openPeek(forceFrame) {
     const peek = document.getElementById('peek');
     if (!peek) return;
     this.peekOpen = true;
-    const f = this.frame;
+
+    let f;
+    if (typeof forceFrame === 'number') {
+      f = forceFrame;
+    } else {
+      // Mirror shader center formula: scrollV at vUv.y=0.5 = scroll + 0.5
+      const s = this.scroll + 0.5;
+      const raw = ((s % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
+      f = Math.floor(raw) % IMAGE_COUNT;
+    }
+
     document.getElementById('peek-image').src = IMAGE_PATHS[f];
     document.getElementById('peek-title').textContent = TITLES[f].replace(/<br\s*\/?>/gi, ' ');
     document.getElementById('peek-index').textContent =
@@ -767,15 +905,18 @@ class WheelSlider {
   }
 
   checkFrame() {
-    const raw = ((this.scroll % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
-    const f = Math.round(raw) % IMAGE_COUNT;
+    // Match the fragment shader's centered-frame formula exactly:
+    //   at vUv.y=0.5, scrollV = scroll + 0.5 → floor gives the centered cell
+    const s = this.scroll + 0.5;
+    const raw = ((s % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
+    const f = Math.floor(raw) % IMAGE_COUNT;
     if (f === this.frame) return;
     this.frame = f;
 
     const num = String(f + 1).padStart(3, '0');
     this.swapTitle(TITLES[f]);
     this.exposureEl.textContent = `Exposure ${num}`;
-    this.counterEl.textContent = `${num} — 008`;
+    this.counterEl.textContent = `${num} — ${String(IMAGE_COUNT).padStart(3, '0')}`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
   }
 
@@ -789,6 +930,13 @@ class WheelSlider {
       .on('change', () => this.rebuildStrip());
     strip.addBinding(params, 'wrapAngle', { min: 1.0, max: 6.0, step: 0.1 })
       .on('change', () => this.rebuildStrip());
+
+    const look = pane.addFolder({ title: 'Image look' });
+    look.addBinding(params, 'exposure',   { min: 0.5, max: 2.0, step: 0.01 });
+    look.addBinding(params, 'brightness', { min: -0.3, max: 0.3, step: 0.005 });
+    look.addBinding(params, 'contrast',   { min: 0.5, max: 1.6, step: 0.01 });
+    look.addBinding(params, 'saturation', { min: 0, max: 2.0, step: 0.01 });
+    look.addBinding(params, 'vignetteStrength', { min: 0, max: 0.6, step: 0.01 });
 
     const film = pane.addFolder({ title: 'Film' });
     film.addBinding(params, 'filmStrength', { min: 0, max: 1, step: 0.05 });
