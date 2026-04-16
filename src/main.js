@@ -15,29 +15,29 @@ const CAMERA_Z = 5;
 const TITLES = [
   'Please<br/>Don\'t Vomit',     // slide-1: rollercoaster + cotton candy
   'Cult<br/>Starter Pack',       // slide-2: red moon, desert, brass bowls
-  'Love<br/>— All',              // slide-3: tennis court, flying balls
-  'Seppuku<br/>at Dawn',         // slide-4: samurai at shrine
-  'Main<br/>Character',          // slide-5: 3 girls w/ popcorn, fisheye
-  'Dining<br/>with Saturn',      // slide-6: pizza under Saturn rings
-  'Tan Line<br/>Divorce',        // slide-7: blue top, palm tree
-  'Delayed<br/>47 Minutes',      // slide-8: subway platform, lone figure
-  'Carbs Before<br/>Boys',       // slide-9: blonde w/ donut
-  'Tarot or<br/>Therapy',        // slide-10: moonlit card game
-  'Lactose<br/>Intolerant',      // slide-11: couple w/ ice cream, messy
+  'Return<br/>to Sender',        // slide-3: tennis balls flying back at you
+  'Unsubscribed',                // slide-4: samurai at shrine. opted out.
+  'Nobody<br/>Asked',            // slide-5: 3 girls w/ popcorn, main character energy
+  'Last Supper<br/>(Casual)',    // slide-6: pizza under Saturn rings
+  'Read Receipts<br/>Off',       // slide-7: girl solo, palm tree, aloof
+  'Wrong<br/>Platform',          // slide-8: subway platform, alone (dating + transit)
+  'Emotional<br/>Support Donut', // slide-9: blonde w/ donut, retro comfort
+  'Bad<br/>Hand',                // slide-10: moonlit card game
+  'Worth<br/>the Cramps',        // slide-11: couple w/ ice cream, messy, committed
   'Rent Is<br/>Overdue',         // slide-12: Paris café dusk
   'Trust Fund<br/>Puppy',        // slide-13: dog reading in bathtub
   'Stop<br/>Calling',            // slide-14: orange phone, donuts, red eye
-  'Wimbledon<br/>Getaway',       // slide-15: shopping cart of tennis balls
+  'Add<br/>to Cart',             // slide-15: shopping cart of tennis balls
   'They<br/>Bite',               // slide-16: pink Ferrari + dogs
-  'Mate<br/>in Mink',            // slide-17: chess, fur coat
+  'Check Your<br/>Privilege',    // slide-17: chess in fur coat (double meaning)
   'Post-Wedding<br/>Uber',       // slide-18: pink moon over city, family
-  'Sister<br/>Wives',            // slide-19: two girls, sunglasses
-  'Boiler Room<br/>Intern',      // slide-20: DJs w/ fans
-  'Fashion<br/>Victim',          // slide-21: cat in red puffer + lollipop
-  'Summit of<br/>Spite',         // slide-22: chess on mountain
-  'Therapy<br/>Deductible',      // slide-23: 4 guys overhead w/ pizza
+  'Same<br/>Therapist',          // slide-19: two girls, matching energy
+  'My SoundCloud<br/>Era',       // slide-20: DJs w/ fans
+  '9 Lives,<br/>1 Outfit',       // slide-21: cat in red puffer + lollipop
+  'Higher<br/>Ground',           // slide-22: chess on mountain
+  'No One<br/>Tipped',           // slide-23: 4 guys overhead w/ pizza
   'He Left,<br/>I Kept It',      // slide-24: girl w/ pizza in bed
-  'Never<br/>Released',          // slide-25: synth studio w/ coffee
+  'Still<br/>in Beta',           // slide-25: synth studio, never shipping
 ];
 
 
