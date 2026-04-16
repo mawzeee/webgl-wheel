@@ -339,7 +339,7 @@ class WheelSlider {
     Promise.all([
       this.loadTextures(),
       this._runLoader(),
-      document.fonts.load('400 400px "Instrument Serif"').catch(() => {}),
+      document.fonts.load('400 400px "Bulevar"').catch(() => {}),
     ]).then(() => {
       this.createStrip();
       this._createTextPlane();
@@ -778,8 +778,8 @@ class WheelSlider {
 
     // Chrome reveals on the wheel's deceleration tail — gentle staircase
     tl.to('#bg-number',     { opacity: 0.05, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
-    tl.to('.frame__top',    { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
-    tl.to('.frame__counter',{ opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.65');
+    tl.to('.navbar',        { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
+    // counter is inside navbar now — revealed together
     tl.to('.frame__bottom', { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
     tl.to('.nav-buttons',   { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.75');
   }
@@ -789,17 +789,17 @@ class WheelSlider {
   //    fbm-dissolve shader. The text animation is done entirely in GLSL. ──
   _createTextPlane() {
     const dpr = Math.min(window.devicePixelRatio, 2);
-    const W = 3072, H = 640;          // one-line aspect (~4.8:1)
+    const W = 4096, H = 1400;          // sized for 1100px Bulevar
     const canvas = document.createElement('canvas');
     canvas.width = W * dpr;
     canvas.height = H * dpr;
     const ctx = canvas.getContext('2d');
     ctx.scale(dpr, dpr);
     ctx.fillStyle = '#EFE6D6';
-    ctx.font = 'normal 400 380px "Instrument Serif", serif';
+    ctx.font = 'normal 400 1100px "Bulevar", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Film Wheel', W / 2, H / 2);
+    ctx.fillText('MAWZE', W / 2, H / 2);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.minFilter = THREE.LinearFilter;

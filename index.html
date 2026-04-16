@@ -4,10 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Film Wheel — WebGL Photobooth Strip</title>
+    <title>MAWZE</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <!-- Inline bg so the very first paint is brown — no white flash before bundled CSS loads -->
     <style>html, body { background: #15100B; margin: 0; }</style>
   </head>
@@ -24,23 +24,18 @@
 
     <!-- Codrops-style chrome overlay -->
     <div class="frame">
-      <header class="frame__top">
-        <h1 class="frame__title">Film Wheel</h1>
-        <nav class="frame__nav">
-          <a href="https://karim-saab.com" class="link" target="_blank">Portfolio</a>
-          <a href="https://github.com/mawzeee/webgl-wheel" class="link" target="_blank">GitHub</a>
-        </nav>
-        <div class="frame__tags">
-          <a href="#" class="tag">#webgl</a>
-          <a href="#" class="tag">#three.js</a>
-          <a href="#" class="tag">#glsl</a>
-          <a href="#" class="tag">#film</a>
-          <a href="#" class="tag">#shader</a>
-          <a href="#" class="tag">#scroll</a>
+      <nav class="navbar" id="navbar">
+        <a href="/" class="navbar__logo">MAWZE</a>
+        <div class="navbar__right">
+          <div class="navbar__links">
+            <a href="#" class="navbar__link">Gallery</a>
+            <a href="#" class="navbar__link">Archive</a>
+            <a href="#" class="navbar__link">About</a>
+            <a href="#" class="navbar__link">Contact</a>
+          </div>
+          <span class="navbar__counter" id="frame-counter">001 / 025</span>
         </div>
-      </header>
-
-      <span class="frame__counter" id="frame-counter">001 / 025</span>
+      </nav>
 
       <footer class="frame__bottom">
         <div class="slide-info">
