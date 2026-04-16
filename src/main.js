@@ -41,6 +41,32 @@ const TITLES = [
 ];
 
 
+// Viewport-adaptive strip params. Called at boot + on every resize.
+function responsiveStripParams() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const portrait = h > w;
+  if (w <= 480) {
+    return {
+      stripWidth: portrait ? 0.72 : 0.38,
+      stripHeight: portrait ? 3.6 : 2.2,
+      wrapAngle: portrait ? 3.2 : 4.4,
+      grainAmount: 0.05,
+      sprocketsPerImage: portrait ? 2 : 3,
+    };
+  }
+  if (w <= 900) {
+    return {
+      stripWidth: portrait ? 0.52 : 0.40,
+      stripHeight: portrait ? 3.2 : 2.6,
+      wrapAngle: 3.8,
+      grainAmount: 0.08,
+      sprocketsPerImage: 3,
+    };
+  }
+  return { stripWidth: 0.32, stripHeight: 2.8, wrapAngle: 4.4, grainAmount: 0.09, sprocketsPerImage: 3 };
+}
+
 const params = {
   stripWidth: 0.32,
   stripHeight: 2.8,
@@ -306,6 +332,8 @@ class WheelSlider {
     this.audio = new AudioKit();
     this.loadPct = 0;
 
+    // Apply viewport-adaptive defaults before creating geometry/camera
+    Object.assign(params, responsiveStripParams());
     this.initScene();
     // Wait for textures + loader + the serif font (canvas needs it for crisp text)
     Promise.all([
@@ -335,7 +363,8 @@ class WheelSlider {
     this.renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.setSize(w, h);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Cap DPR lower on small phones for performance
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth <= 480 ? 1.5 : 2));
     this.container.appendChild(this.renderer.domElement);
   }
 
@@ -506,7 +535,8 @@ class WheelSlider {
       const dy = Math.abs(e.clientY - downY);
       const dt = performance.now() - downT;
       // If barely moved + quick: treat as click → open peek on THE clicked image
-      if (dx < 6 && dy < 6 && dt < 300 && !this.peekOpen) {
+      // Looser threshold accommodates finger taps (bigger contact area, slight jitter)
+      if (dx < 10 && dy < 10 && dt < 450 && !this.peekOpen) {
         const tgt = e.target;
         if (!tgt || tgt.tagName !== 'CANVAS' || !this.mesh) return;
 
@@ -554,12 +584,17 @@ class WheelSlider {
       if (e.key === 'Escape' && this.peekOpen) this.closePeek();
     });
 
-    window.addEventListener('resize', () => {
+    const onResize = () => {
+      // Re-apply viewport-adaptive params
+      Object.assign(params, responsiveStripParams());
+
       const w = this.container.clientWidth || window.innerWidth;
       const h = this.container.clientHeight || window.innerHeight;
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth <= 480 ? 1.5 : 2));
+
       const vp = this.viewport();
       const imgW = vp.w * params.stripWidth;
       const pw = imgW / (1 - 2 * params.borderWidth);
@@ -568,7 +603,10 @@ class WheelSlider {
       this.mesh.geometry = new THREE.PlaneGeometry(pw, ph, 32, 164);
       this.material.uniforms.uRadius.value = ph / params.wrapAngle;
       this.material.uniforms.uSlotH.value = imgW / ph;
-    });
+    };
+    window.addEventListener('resize', onResize);
+    // iOS URL-bar show/hide fires visualViewport resize but not window resize
+    window.visualViewport?.addEventListener('resize', onResize);
   }
 
   loop() {
@@ -715,11 +753,10 @@ class WheelSlider {
       ease: fadeEase,
     }, 'hold');
 
-    tl.to(document.body, {
-      backgroundColor: '#F0EAE0',
-      duration: fadeDur,
-      ease: fadeEase,
-    }, 'hold');
+    // Flip to "daylight" — CSS transition handles the bg + chrome text colors
+    // together via a class (more robust than tweening inline style, especially
+    // on mobile where backgroundColor tweens can fail to commit visually).
+    tl.add(() => document.body.classList.add('daylight'), 'hold');
 
     // ─────────────────────────────────────────────────────────────────
     //  ACT 4  — HERO (1.0s, climactic)
