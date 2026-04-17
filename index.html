@@ -22,63 +22,98 @@
 
     <div id="canvas-container"></div>
 
-    <!-- Codrops-style chrome overlay -->
+    <!-- Editorial chrome — strict 4-corner grid, each corner one job only. -->
     <div class="frame">
       <nav class="navbar" id="navbar">
         <a href="/" class="navbar__logo">MAWZE</a>
-        <div class="navbar__right">
-          <div class="navbar__links">
-            <a href="#" class="navbar__link">Gallery</a>
-            <a href="#" class="navbar__link">Archive</a>
-            <a href="#" class="navbar__link">About</a>
-            <a href="#" class="navbar__link">Contact</a>
-          </div>
-          <span class="navbar__counter" id="frame-counter">001 / 025</span>
+        <div class="navbar__links">
+          <a href="#" class="navbar__link">Index</a>
+          <a href="#" class="navbar__link">Archive</a>
+          <a href="#" class="navbar__link">About</a>
         </div>
       </nav>
 
-      <!-- Full-screen technical frame: 4 registration marks at viewport corners -->
-      <span class="hero-mark hero-mark--tl" aria-hidden="true"></span>
-      <span class="hero-mark hero-mark--tr" aria-hidden="true"></span>
-      <span class="hero-mark hero-mark--bl" aria-hidden="true"></span>
-      <span class="hero-mark hero-mark--br" aria-hidden="true"></span>
-
-      <!-- Horizontal axis: a thin hairline that ties the bottom-left tech row
-           to the bottom-right meta row, forming the technical spine. -->
-      <hr class="hero-axis" aria-hidden="true" />
-
-      <footer class="frame__bottom">
-        <div class="slide-info">
-          <span class="mono-xs" id="exposure-label">Exposure 001</span>
-          <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">The Card</span></span><span class="line-wrap"><span class="line">Players</span></span></h2>
-        </div>
-
-        <!-- Bottom-left: per-frame camera metadata -->
-        <div class="hero-tech" id="hero-tech" aria-hidden="true">
-          <span class="hero-tech__item" id="hero-tech-idx">001/025</span>
-          <span class="hero-tech__sep">·</span>
-          <span class="hero-tech__item" id="hero-tech-iso">ISO 200</span>
-          <span class="hero-tech__sep">·</span>
-          <span class="hero-tech__item" id="hero-tech-ap">f/2.8</span>
-          <span class="hero-tech__sep">·</span>
-          <span class="hero-tech__item" id="hero-tech-sh">1/125<i>s</i></span>
-          <span class="hero-tech__sep">·</span>
-          <span class="hero-tech__item" id="hero-tech-ev">EV −0.3</span>
-        </div>
-
-        <!-- Bottom-right: stock + live scroll coordinate (balances the left row) -->
-        <div class="frame__meta">
-          <span class="hero-tech__item" id="stock-label">35mm · Kodak Vision 250D</span>
-          <span class="hero-tech__sep">·</span>
-          <span class="hero-tech__item hero-tech__live" id="hero-tech-phi">φ 0.0000</span>
-        </div>
-      </footer>
-
-      <div class="byline">
-        <span class="mono-xs muted">By</span>
-        <span class="mono-xs strong">Karim Saab</span>
+      <!-- Middle-left: the one piece of editorial typography -->
+      <div class="slide-info">
+        <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">The Card</span></span><span class="line-wrap"><span class="line">Players</span></span></h2>
       </div>
 
+      <!-- Middle-right: instrument panel — radar chart + metric readouts.
+           Every value is driven by the current frame's signature object.
+           Axes + bars morph on frame change via GSAP. -->
+      <aside class="instrument" id="instrument" aria-hidden="true">
+        <div class="instrument__head">
+          <span class="instrument__label">SIGNATURE</span>
+          <span class="instrument__index" id="instrument-index">001</span>
+        </div>
+
+        <svg class="instrument__radar" viewBox="-110 -110 220 220" aria-hidden="true">
+          <!-- Grid rings (static) -->
+          <polygon class="radar-grid" id="radar-grid-1"></polygon>
+          <polygon class="radar-grid" id="radar-grid-2"></polygon>
+          <polygon class="radar-grid" id="radar-grid-3"></polygon>
+          <!-- Axis lines (static) -->
+          <g class="radar-axes" id="radar-axes"></g>
+          <!-- Axis labels (static) -->
+          <g class="radar-labels" id="radar-labels"></g>
+          <!-- Data polygon (morphs per frame) -->
+          <polygon class="radar-data" id="radar-data"></polygon>
+          <!-- Data vertex markers (morph per frame) -->
+          <g class="radar-points" id="radar-points"></g>
+        </svg>
+
+        <div class="readout">
+          <div class="readout__row" data-metric="stylize">
+            <span class="readout__key">STYLIZE</span>
+            <span class="readout__val" id="rd-stylize">000</span>
+            <span class="readout__bar"><i class="readout__fill" id="bar-stylize"></i></span>
+          </div>
+          <div class="readout__row" data-metric="chaos">
+            <span class="readout__key">CHAOS</span>
+            <span class="readout__val" id="rd-chaos">00</span>
+            <span class="readout__bar"><i class="readout__fill" id="bar-chaos"></i></span>
+          </div>
+          <div class="readout__row" data-metric="weight">
+            <span class="readout__key">WEIGHT</span>
+            <span class="readout__val" id="rd-weight">0.00</span>
+            <span class="readout__bar"><i class="readout__fill" id="bar-weight"></i></span>
+          </div>
+          <div class="readout__row" data-metric="temp">
+            <span class="readout__key">TEMP</span>
+            <span class="readout__val" id="rd-temp">0000K</span>
+            <span class="readout__bar"><i class="readout__fill" id="bar-temp"></i></span>
+          </div>
+          <div class="readout__row" data-metric="sat">
+            <span class="readout__key">SAT</span>
+            <span class="readout__val" id="rd-sat">00%</span>
+            <span class="readout__bar"><i class="readout__fill" id="bar-sat"></i></span>
+          </div>
+          <div class="readout__row readout__row--seed" data-metric="seed">
+            <span class="readout__key">SEED</span>
+            <span class="readout__val readout__val--mono" id="rd-seed">0000000</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Bottom-left: canonical frame identity + camera metadata (one row, tabular) -->
+      <div class="hero-tech" id="hero-tech" aria-hidden="true">
+        <span class="hero-tech__item hero-tech__idx" id="hero-tech-idx">001/025</span>
+        <span class="hero-tech__sep">·</span>
+        <span class="hero-tech__item" id="hero-tech-iso">ISO 200</span>
+        <span class="hero-tech__sep">·</span>
+        <span class="hero-tech__item" id="hero-tech-ap">f/2.8</span>
+        <span class="hero-tech__sep">·</span>
+        <span class="hero-tech__item" id="hero-tech-sh">1/125<i>s</i></span>
+        <span class="hero-tech__sep">·</span>
+        <span class="hero-tech__item" id="hero-tech-ev">EV −0.3</span>
+      </div>
+
+      <!-- Bottom-right: stock + live scroll coordinate -->
+      <div class="frame__meta">
+        <span class="hero-tech__item" id="stock-label">35mm · Kodak Vision 250D</span>
+        <span class="hero-tech__sep">·</span>
+        <span class="hero-tech__item hero-tech__live" id="hero-tech-phi">φ 0.0000</span>
+      </div>
     </div>
 
 

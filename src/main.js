@@ -41,6 +41,41 @@ const TITLES = [
 ];
 
 
+// ── Per-frame signatures — the data behind the instrument panel ──
+// Each frame has a deterministic fingerprint of AI-generation parameters
+// (stylize, chaos, weight, temperature, saturation, seed). Values stay the
+// same across reloads (seeded from the frame index) so scrubbing feels
+// reproducible. These drive the radar polygon + readout rows.
+function _sigHash(i, salt) {
+  const x = Math.sin(i * 9301 + salt * 49297) * 43758.5453;
+  return x - Math.floor(x);
+}
+const SIGNATURES = Array.from({ length: IMAGE_COUNT }, (_, i) => {
+  const h1 = _sigHash(i, 1);
+  const h2 = _sigHash(i, 2);
+  const h3 = _sigHash(i, 3);
+  const h4 = _sigHash(i, 4);
+  const h5 = _sigHash(i, 5);
+  const h6 = _sigHash(i, 6);
+  return {
+    stylize: Math.round(40 + h1 * 960),           // 40–1000
+    chaos:   Math.round(h2 * 85),                 // 0–85
+    weight:  +(0.35 + h3 * 1.55).toFixed(2),      // 0.35–1.90
+    temp:    Math.round(2400 + h4 * 7600),        // 2400–10000 K
+    sat:     Math.round(18 + h5 * 78),            // 18–96 %
+    seed:    Math.floor(100000 + h6 * 9899999),   // 6–7 digits
+  };
+});
+// Per-frame axis mapping (normalized 0–1) — drives the radar polygon.
+const SIG_AXES = SIGNATURES.map(s => [
+  s.stylize / 1000,
+  s.chaos / 100,
+  s.weight / 2,
+  (s.temp - 2000) / 8000,
+  s.sat / 100,
+  (s.seed % 1000) / 1000,
+]);
+
 // Viewport-adaptive strip params. Called at boot + on every resize.
 function responsiveStripParams() {
   const w = window.innerWidth;
@@ -328,9 +363,27 @@ class WheelSlider {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.titleEl = document.getElementById('slide-title');
-    this.counterEl = document.getElementById('frame-counter');
-    this.exposureEl = document.getElementById('exposure-label');
     this.bgNumEl = document.getElementById('bg-number');
+    // Instrument panel DOM
+    this.instr = {
+      index:   document.getElementById('instrument-index'),
+      radar:   document.getElementById('radar-data'),
+      points:  document.getElementById('radar-points'),
+      stylize: document.getElementById('rd-stylize'),
+      chaos:   document.getElementById('rd-chaos'),
+      weight:  document.getElementById('rd-weight'),
+      temp:    document.getElementById('rd-temp'),
+      sat:     document.getElementById('rd-sat'),
+      seed:    document.getElementById('rd-seed'),
+      barStylize: document.getElementById('bar-stylize'),
+      barChaos:   document.getElementById('bar-chaos'),
+      barWeight:  document.getElementById('bar-weight'),
+      barTemp:    document.getElementById('bar-temp'),
+      barSat:     document.getElementById('bar-sat'),
+    };
+    // Interpolated display state — GSAP tweens into these on frame change.
+    this.instrState = { a0: 0, a1: 0, a2: 0, a3: 0, a4: 0, a5: 0,
+                        stylize: 0, chaos: 0, weight: 0, temp: 0, sat: 0 };
     // Hero tech annotations
     this.techIdxEl = document.getElementById('hero-tech-idx');
     this.techIsoEl = document.getElementById('hero-tech-iso');
@@ -367,7 +420,9 @@ class WheelSlider {
       document.fonts.load('400 400px "Bulevar"').catch(() => {}),
     ]).then(() => {
       this.createStrip();
+      this._createGridPlane();
       this._createTextPlane();
+      this._buildRadar();
       this.listen();
       this.initGUI();
       this.loop();
@@ -622,6 +677,17 @@ class WheelSlider {
       this.mesh.geometry = new THREE.PlaneGeometry(pw, ph, 32, 164);
       this.material.uniforms.uRadius.value = ph / params.wrapAngle;
       this.material.uniforms.uSlotH.value = imgW / ph;
+
+      // Resize the contact-sheet grid to the new viewport
+      if (this.gridMesh) {
+        const z = -2;
+        const dist = CAMERA_Z - z;
+        const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+        const visW = visH * this.camera.aspect;
+        this.gridMesh.geometry.dispose();
+        this.gridMesh.geometry = new THREE.PlaneGeometry(visW, visH);
+        this.gridMaterial.uniforms.uResolution.value.set(w, h);
+      }
     };
     window.addEventListener('resize', onResize);
     // iOS URL-bar show/hide fires visualViewport resize but not window resize
@@ -687,6 +753,11 @@ class WheelSlider {
       this.mesh.rotation.x = -this.parallaxY * 0.03;
     }
 
+    // Iris: only needs the shared time clock — rotation is self-driven.
+    if (this.gridMaterial) {
+      this.gridMaterial.uniforms.uTime.value = u.uTime.value;
+    }
+
     this.checkFrame();
 
     // Live scroll readout — φ updates every frame for a continuously-changing
@@ -708,8 +779,19 @@ class WheelSlider {
 
     this.swapTitle(TITLES[0]);
     this.bgNumEl.textContent = '01';
-    this.counterEl.textContent = '001 — 025';
-    this.exposureEl.textContent = 'Exposure 001';
+    // Seed the panel with frame 0's signature (instant, no tween) so the
+    // reveal shows real data rather than zeros rolling in.
+    const s0 = SIGNATURES[0];
+    const a0 = SIG_AXES[0];
+    Object.assign(this.instrState, {
+      a0: a0[0], a1: a0[1], a2: a0[2], a3: a0[3], a4: a0[4], a5: a0[5],
+      stylize: s0.stylize, chaos: s0.chaos, weight: s0.weight,
+      temp: s0.temp, sat: s0.sat,
+    });
+    if (this.instr.index) this.instr.index.textContent = '001';
+    if (this.instr.seed) this.instr.seed.textContent = String(s0.seed).padStart(7, '0');
+    this._redrawRadar();
+    this._redrawReadout();
 
     const preloaderEl = document.getElementById('pre-loader');
 
@@ -807,8 +889,89 @@ class WheelSlider {
     tl.to('#bg-number',     { opacity: 0.05, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
     tl.to('.navbar',        { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
     // counter is inside navbar now — revealed together
-    tl.to('.slide-info, .frame__meta', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
+    tl.to('.slide-info, .frame__meta, .hero-tech', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
+    // Instrument panel fades in on the deceleration tail alongside the rest
+    // of the chrome — already pre-seeded with frame 0 so no value roll.
+    tl.to('.instrument', { opacity: 1, duration: 0.6, ease: 'power2.out' }, 'hero+=0.75');
+
+    // Contact-sheet grid fades in at the tail — the photographic inspection
+    // surface the whole composition sits on.
+    if (this.gridMaterial) {
+      tl.to(this.gridMaterial.uniforms.uActive, {
+        value: 1,
+        duration: 1.2,
+        ease: 'power2.out',
+      }, 'hero+=0.3');
+    }
     // .nav-buttons removed — drag + keyboard + click are enough to navigate
+  }
+
+  // ── Iris mechanism: a full-viewport plane behind everything that draws
+  //    an 8-blade aperture diaphragm rotating one revolution per ~60
+  //    seconds with a subtle breathing pulse. Mass of the blades reads as
+  //    a soft dark frame in the viewport corners; a hairline edge traces
+  //    the polygon boundary itself. No cursor reaction — the rotation
+  //    itself is the life. Photographic, schematic, WebGL-native.
+  _createGridPlane() {
+    this.gridMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: {
+        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        uActive:     { value: 0 },
+        uTime:       { value: 0 },
+      },
+      vertexShader: /* glsl */`
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision highp float;
+        uniform vec2 uResolution;
+        uniform float uActive;
+        uniform float uTime;
+        varying vec2 vUv;
+
+        void main() {
+          // Graph-paper measurement surface — a static dot lattice. Lives
+          // behind every other layer at ultra-low alpha so it reads as a
+          // technical background, not decoration. The per-frame data
+          // graphs drawn on top are what make it feel alive.
+          vec2 px = vUv * uResolution;
+          const float SP = 28.0;
+          vec2 g = mod(px + SP * 0.5, SP) - SP * 0.5;
+          float r = length(g);
+          float core = smoothstep(1.0, 0.45, r);
+          float halo = smoothstep(2.0, 1.0, r) * 0.08;
+          float dotA = max(core, halo);
+
+          vec3 ink = vec3(0.08, 0.07, 0.06);
+          float a = dotA * 0.075 * uActive;
+
+          gl_FragColor = vec4(ink, a);
+        }
+      `,
+    });
+
+    // Size the plane to exactly fill the viewport at a fixed depth behind
+    // the text plane (z=-1) so transparent sorting (back-to-front) composites
+    // grid → text → film in that order.
+    const z = -2;
+    const dist = CAMERA_Z - z;
+    const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    const visW = visH * this.camera.aspect;
+
+    this.gridMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(visW, visH),
+      this.gridMaterial
+    );
+    this.gridMesh.position.z = z;
+    this.gridMesh.renderOrder = -5;
+    this.scene.add(this.gridMesh);
   }
 
   // ── WebGL text plane: serif "Film / Wheel" rendered to a high-res 2D
@@ -997,9 +1160,8 @@ class WheelSlider {
     const num = String(f + 1).padStart(3, '0');
     const total = String(IMAGE_COUNT).padStart(3, '0');
     this.swapTitle(TITLES[f]);
-    this.exposureEl.textContent = `Exposure ${num}`;
-    this.counterEl.textContent = `${num} — ${total}`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
+    this._updateInstrument(f);
 
     // Hero tech metadata (per-frame EXIF-style annotations)
     const t = this.techMetaFor(f);
@@ -1008,6 +1170,127 @@ class WheelSlider {
     if (this.techApEl)  this.techApEl.textContent  = t.ap;
     if (this.techShEl)  this.techShEl.innerHTML    = `${t.sh}<i>s</i>`;
     if (this.techEvEl)  this.techEvEl.textContent  = `EV ${t.ev}`;
+  }
+
+  // ── Instrument panel: build static radar scaffold (grids + axes + labels). ──
+  _buildRadar() {
+    const R = 92;                                    // outer radius in SVG units
+    const axes = ['STY', 'CHA', 'WGT', 'TMP', 'SAT', 'SD'];
+    const N = axes.length;
+    // For each axis k, angle = -π/2 + k * 2π/N (first axis points up)
+    const angleFor = (k) => -Math.PI / 2 + (k * Math.PI * 2) / N;
+
+    const ringPts = (scale) => {
+      const pts = [];
+      for (let k = 0; k < N; k++) {
+        const a = angleFor(k);
+        pts.push(`${(Math.cos(a) * R * scale).toFixed(2)},${(Math.sin(a) * R * scale).toFixed(2)}`);
+      }
+      return pts.join(' ');
+    };
+
+    // Concentric rings — 33%, 66%, 100%
+    document.getElementById('radar-grid-1').setAttribute('points', ringPts(1.0));
+    document.getElementById('radar-grid-2').setAttribute('points', ringPts(0.66));
+    document.getElementById('radar-grid-3').setAttribute('points', ringPts(0.33));
+
+    // Axis lines from center to each vertex
+    const axesG = document.getElementById('radar-axes');
+    axesG.innerHTML = '';
+    for (let k = 0; k < N; k++) {
+      const a = angleFor(k);
+      const x = (Math.cos(a) * R).toFixed(2);
+      const y = (Math.sin(a) * R).toFixed(2);
+      axesG.innerHTML += `<line x1="0" y1="0" x2="${x}" y2="${y}"></line>`;
+    }
+
+    // Axis labels — pushed slightly past the outer ring
+    const labelsG = document.getElementById('radar-labels');
+    labelsG.innerHTML = '';
+    for (let k = 0; k < N; k++) {
+      const a = angleFor(k);
+      const x = (Math.cos(a) * (R + 12)).toFixed(2);
+      const y = (Math.sin(a) * (R + 12) + 2.3).toFixed(2);
+      const anchor = Math.abs(Math.cos(a)) < 0.15 ? 'middle' : (Math.cos(a) > 0 ? 'start' : 'end');
+      labelsG.innerHTML += `<text x="${x}" y="${y}" text-anchor="${anchor}">${axes[k]}</text>`;
+    }
+
+    // Pre-create the 6 data-point circles (positions set per-frame)
+    const pointsG = document.getElementById('radar-points');
+    pointsG.innerHTML = '';
+    for (let k = 0; k < N; k++) {
+      pointsG.innerHTML += `<circle r="1.8" cx="0" cy="0"></circle>`;
+    }
+
+    this._radarR = R;
+    this._radarAngles = Array.from({ length: N }, (_, k) => angleFor(k));
+  }
+
+  // ── Redraw the radar polygon + data points from the current interpolated
+  //    axis values (instrState.a0..a5). Called on every GSAP tick while
+  //    morphing between frames so it animates smoothly.
+  _redrawRadar() {
+    if (!this._radarAngles) return;
+    const R = this._radarR;
+    const vals = [
+      this.instrState.a0, this.instrState.a1, this.instrState.a2,
+      this.instrState.a3, this.instrState.a4, this.instrState.a5,
+    ];
+    const pts = [];
+    const circles = this.instr.points.children;
+    for (let k = 0; k < 6; k++) {
+      const a = this._radarAngles[k];
+      // Small floor so the polygon never fully collapses — keeps the shape readable
+      const v = Math.max(vals[k], 0.06);
+      const x = Math.cos(a) * R * v;
+      const y = Math.sin(a) * R * v;
+      pts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+      circles[k].setAttribute('cx', x.toFixed(2));
+      circles[k].setAttribute('cy', y.toFixed(2));
+    }
+    this.instr.radar.setAttribute('points', pts.join(' '));
+  }
+
+  // Update readout text + bar widths from the interpolated state.
+  _redrawReadout() {
+    const s = this.instrState;
+    this.instr.stylize.textContent = String(Math.round(s.stylize)).padStart(3, '0');
+    this.instr.chaos.textContent   = String(Math.round(s.chaos)).padStart(2, '0');
+    this.instr.weight.textContent  = s.weight.toFixed(2);
+    this.instr.temp.textContent    = `${Math.round(s.temp / 10) * 10}K`;
+    this.instr.sat.textContent     = `${Math.round(s.sat)}%`;
+
+    this.instr.barStylize.style.width = `${(s.stylize / 1000) * 100}%`;
+    this.instr.barChaos.style.width   = `${(s.chaos / 100) * 100}%`;
+    this.instr.barWeight.style.width  = `${(s.weight / 2) * 100}%`;
+    this.instr.barTemp.style.width    = `${((s.temp - 2000) / 8000) * 100}%`;
+    this.instr.barSat.style.width     = `${(s.sat / 100) * 100}%`;
+  }
+
+  // Frame change → GSAP tweens every numeric value + the 6 radar axes over
+  // the same duration with a shared ease, so the polygon morphs in lock-step
+  // with the digits rolling and the bars sliding. Seed just snaps.
+  _updateInstrument(f) {
+    const sig = SIGNATURES[f];
+    const axes = SIG_AXES[f];
+    if (!sig) return;
+
+    if (this.instr.index) {
+      this.instr.index.textContent = String(f + 1).padStart(3, '0');
+    }
+    if (this.instr.seed) this.instr.seed.textContent = String(sig.seed).padStart(7, '0');
+
+    gsap.to(this.instrState, {
+      a0: axes[0], a1: axes[1], a2: axes[2], a3: axes[3], a4: axes[4], a5: axes[5],
+      stylize: sig.stylize, chaos: sig.chaos, weight: sig.weight,
+      temp: sig.temp, sat: sig.sat,
+      duration: 0.75,
+      ease: 'power3.out',
+      onUpdate: () => {
+        this._redrawRadar();
+        this._redrawReadout();
+      },
+    });
   }
 
   // ── Tweakpane (hidden by default, toggle with D) ──

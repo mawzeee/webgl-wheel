@@ -22,6 +22,10 @@
   --chrome: 11px;
   --micro: 10px;
   --ls: 0.08em;
+
+  /* Editorial grid — tight margins. Every chrome element aligns to these. */
+  --safe-x: 28px;
+  --safe-y: 26px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -47,7 +51,6 @@ body {
 .navbar__logo       { color: #EFE6D6; }
 .navbar__link       { color: rgba(239, 230, 214, 0.55); }
 .navbar__link:hover { color: #EFE6D6; }
-.navbar__counter    { color: rgba(239, 230, 214, 0.55); }
 .mono-xs            { color: rgba(239, 230, 214, 0.55); }
 .mono-xs.muted      { color: rgba(239, 230, 214, 0.32); }
 .mono-xs.strong     { color: #EFE6D6; }
@@ -57,7 +60,6 @@ body {
 /* Transitions on chrome so colors ease with the bg swap */
 .navbar__logo,
 .navbar__link,
-.navbar__counter,
 .mono-xs,
 .slide-title,
 .bg-number { transition: color 0.65s ease-in-out, background 0.65s ease-in-out, border-color 0.65s ease-in-out; }
@@ -67,7 +69,6 @@ body.daylight { background: var(--bg); }
 body.daylight .navbar__logo       { color: var(--ink); }
 body.daylight .navbar__link       { color: var(--muted); }
 body.daylight .navbar__link:hover { color: var(--ink); }
-body.daylight .navbar__counter     { color: var(--muted); }
 body.daylight .mono-xs            { color: var(--muted); }
 body.daylight .mono-xs.muted      { color: var(--faint); }
 body.daylight .mono-xs.strong     { color: var(--ink); }
@@ -76,18 +77,20 @@ body.daylight .bg-number          { color: var(--ink); }
 
 #canvas-container { touch-action: none; }
 
-/* ── Background frame number ── */
+/* ── Background frame number — a single large typographic element
+     behind the title, aligned to the title's left edge. Tuned down so it
+     supports the title instead of fighting it. ── */
 .bg-number {
   position: fixed;
-  bottom: -8vh;
-  left: -2vw;
+  bottom: calc(var(--safe-y) - 24px);
+  left: calc(var(--safe-x) - 10px);
   font-family: var(--display);
-  font-size: clamp(280px, 42vw, 700px);
+  font-size: clamp(220px, 32vw, 520px);
   font-weight: 400;
-  line-height: 0.8;
-  letter-spacing: 0.06em;
+  line-height: 0.78;
+  letter-spacing: 0.04em;
   color: var(--ink);
-  opacity: 0; /* GSAP reveals to 0.05 after prelude */
+  opacity: 0; /* GSAP reveals to a low value after prelude */
   pointer-events: none;
   user-select: none;
   z-index: 1;
@@ -108,30 +111,28 @@ canvas { display: block; width: 100%; height: 100%; }
   position: fixed;
   inset: 0;
   z-index: 30;
-  padding: 22px 28px;
   pointer-events: none;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr auto;
-  gap: 12px;
 }
 
 .frame > * { pointer-events: auto; }
 
-/* ── Navbar ── */
+/* ── Navbar: two anchored ends, same baseline ── */
 
 .navbar {
-  grid-column: 1 / -1;
-  grid-row: 1;
+  position: fixed;
+  top: var(--safe-y);
+  left: var(--safe-x);
+  right: var(--safe-x);
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   opacity: 0; /* revealed by GSAP after prelude */
+  z-index: 45;
 }
 
 .navbar__logo {
   font-family: var(--display);
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 400;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -142,7 +143,7 @@ canvas { display: block; width: 100%; height: 100%; }
 
 .navbar__links {
   display: flex;
-  gap: 24px;
+  gap: 28px;
 }
 
 .navbar__link {
@@ -159,35 +160,8 @@ canvas { display: block; width: 100%; height: 100%; }
   color: var(--ink);
 }
 
-.navbar__right {
-  display: flex;
-  align-items: center;
-  gap: 32px;
-}
-
-.navbar__counter {
-  font-family: var(--body);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  font-feature-settings: 'tnum' 1;
-  color: var(--muted);
-}
-
-/* counter is now inside .navbar__right */
-.frame__counter-UNUSED {
-}
-
-.frame__bottom {
-  grid-column: 1 / -1;
-  grid-row: 3;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 48px;
-}
-/* Start children transparent so GSAP can reveal them individually — parent opacity would otherwise cascade and hide fixed-positioned spine/magazine titles */
-.slide-info, .frame__meta { opacity: 0; }
+/* Start hidden so GSAP can reveal after the prelude without cascade issues */
+.slide-info, .frame__meta, .hero-tech { opacity: 0; }
 
 /* ── Typography ── */
 
@@ -215,47 +189,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
 .mono-xs.muted { color: var(--faint); }
 .mono-xs.strong { color: var(--ink); font-weight: 600; }
-
-/* ── Slide info (bottom left) ── */
-
-.slide-info {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.slide-title {
-  font-family: var(--display);
-  font-size: clamp(42px, 6vw, 90px);
-  font-weight: 400;
-  line-height: 0.9;
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
-  color: var(--ink);
-}
-
-/* Split-line reveal: each line sits in an overflow-hidden wrapper */
-.slide-title .line-wrap {
-  display: block;
-  overflow: hidden;
-  padding-bottom: 2px; /* breathing room for descenders */
-}
-
-.slide-title .line {
-  display: block;
-  will-change: transform;
-}
-
-/* Meta styling lives with the hero layout rules below — intentional empty section */
-
-/* ── Byline (bottom-left, below slide-info) ── */
-
-.byline {
-  position: fixed;
-  bottom: 22px;
-  left: 28px;
-  display: none; /* swapped into slide-info instead */
-}
 
 /* ── Peek (click-to-fullscreen frame) ── */
 
@@ -395,134 +328,51 @@ canvas { display: block; width: 100%; height: 100%; }
 /* Title is rendered as a Three.js plane with a custom dissolve shader (no DOM). */
 
 /* ═════════════════════════════════════════════════════════════════
-   LAYOUT VARIANTS — toggle via 1-5 keys. Defaults to "corner".
-   Each layout restructures where the title, exposure label, and meta
-   live. The base styles above assume "corner" (current).
-   ═════════════════════════════════════════════════════════════════ */
-
-
-/* ═════════════════════════════════════════════════════════════════
-   HERO LAYOUT — big display title middle-left, wrapped in technical
-   annotations (registration marks + camera-metadata row + live scroll
-   coordinate) to create editorial/mathematical contrast against the
-   display type.
+   EDITORIAL GRID — four anchored corners + one middle-left title.
+   Every chrome element shares the same --safe-x / --safe-y margin
+   so the viewport reads as one unified composition.
    ═════════════════════════════════════════════════════════════════ */
 
 .slide-info {
   position: fixed;
-  left: 28px;
+  left: var(--safe-x);
   top: 50%;
   transform: translateY(-50%);
   max-width: 34vw;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
   z-index: 40;
 }
 .slide-title {
-  font-size: clamp(64px, 7.6vw, 128px);
-  line-height: 0.88;
+  font-family: var(--display);
+  font-size: clamp(72px, 8.4vw, 148px);
+  font-weight: 400;
+  line-height: 0.86;
   letter-spacing: 0.003em;
+  text-transform: uppercase;
 }
-.slide-title .line-wrap { display: block; }
+.slide-title .line-wrap { display: block; overflow: hidden; padding-bottom: 2px; }
+.slide-title .line      { display: block; will-change: transform; }
 
-/* Editorial rule after the exposure label */
-#exposure-label {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-#exposure-label::after {
-  content: '';
-  display: inline-block;
-  width: 36px;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.5;
-}
-
-/* L-shaped registration marks at the FOUR VIEWPORT corners —
-   the technical frame that contains the entire composition. */
-.hero-mark {
-  position: fixed;
-  width: 14px;
-  height: 14px;
-  pointer-events: none;
-  color: rgba(239, 230, 214, 0.38);
-  z-index: 45;
-}
-.hero-mark::before,
-.hero-mark::after {
-  content: '';
-  position: absolute;
-  background: currentColor;
-}
-.hero-mark::before { top: 0; left: 0; width: 14px; height: 1px; }
-.hero-mark::after  { top: 0; left: 0; width: 1px;  height: 14px; }
-.hero-mark--tl { top: 36px; left: 36px; }
-.hero-mark--tr { top: 36px; right: 36px; transform: scaleX(-1); }
-.hero-mark--bl { bottom: 30px; left: 36px; transform: scaleY(-1); }
-.hero-mark--br { bottom: 30px; right: 36px; transform: scale(-1, -1); }
-body.daylight .hero-mark { color: rgba(20, 18, 16, 0.4); }
-
-/* Horizontal axis — full-width hairline with a transparent window in the center
-   so it never crosses in front of the film strip (behind it, essentially). */
-.hero-axis {
-  position: fixed;
-  left: 64px;
-  right: 64px;
-  bottom: 96px;
-  height: 1px;
-  margin: 0;
-  border: 0;
-  background: linear-gradient(
-    to right,
-    rgba(239, 230, 214, 0.22) 0%,
-    rgba(239, 230, 214, 0.22) 22%,
-    transparent 24%,
-    transparent 76%,
-    rgba(239, 230, 214, 0.22) 78%,
-    rgba(239, 230, 214, 0.22) 100%
-  );
-  z-index: 44;
-  pointer-events: none;
-}
-body.daylight .hero-axis {
-  background: linear-gradient(
-    to right,
-    rgba(20, 18, 16, 0.22) 0%,
-    rgba(20, 18, 16, 0.22) 22%,
-    transparent 24%,
-    transparent 76%,
-    rgba(20, 18, 16, 0.22) 78%,
-    rgba(20, 18, 16, 0.22) 100%
-  );
-}
-
-/* Shared type system for the bottom metadata rows (left + right) */
+/* Bottom rails: two mono rows sharing the same baseline + type size. */
 .hero-tech,
 .frame__meta {
   position: fixed;
-  bottom: 58px;
+  bottom: var(--safe-y);
   display: flex;
   gap: 10px;
   align-items: baseline;
   font-family: var(--mono);
   font-size: 10px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: rgba(239, 230, 214, 0.62);
   font-feature-settings: 'tnum' 1;
   z-index: 45;
 }
-.hero-tech { left: 64px; }
-.frame__meta {
-  right: 64px;
-  left: auto;
-  flex-direction: row;
-  text-align: right;
-}
-.hero-tech__sep { opacity: 0.35; }
+.hero-tech  { left:  var(--safe-x); }
+.frame__meta { right: var(--safe-x); }
+
+.hero-tech__sep { opacity: 0.32; }
+.hero-tech__idx  { color: rgba(239, 230, 214, 0.92); }
 .hero-tech i {
   font-style: normal;
   font-size: 9px;
@@ -531,15 +381,149 @@ body.daylight .hero-axis {
   text-transform: lowercase;
 }
 .hero-tech__live {
-  color: rgba(239, 230, 214, 0.85);
+  color: rgba(239, 230, 214, 0.92);
   font-variant-numeric: tabular-nums;
-  min-width: 84px; /* prevent jitter as digits change */
+  min-width: 84px;
   display: inline-block;
   text-align: right;
 }
 body.daylight .hero-tech,
 body.daylight .frame__meta { color: var(--muted); }
+body.daylight .hero-tech__idx,
 body.daylight .hero-tech__live { color: var(--ink); }
+
+/* ═════════════════════════════════════════════════════════════════
+   INSTRUMENT PANEL — right safe zone. Radar chart + metric readouts
+   driven by the current frame's signature object. Morphs on scroll.
+   ═════════════════════════════════════════════════════════════════ */
+
+.instrument {
+  position: fixed;
+  right: var(--safe-x);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 196px;
+  z-index: 44;
+  opacity: 0; /* revealed by GSAP after prelude */
+  pointer-events: none;
+  font-family: var(--mono);
+  color: var(--ink);
+  font-feature-settings: 'tnum' 1;
+}
+
+.instrument__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(20, 18, 16, 0.52);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(20, 18, 16, 0.12);
+}
+.instrument__index {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.14em;
+}
+
+/* ── Radar chart ── */
+.instrument__radar {
+  width: 100%;
+  height: 196px;
+  display: block;
+  margin-bottom: 16px;
+  overflow: visible;
+}
+.radar-grid {
+  fill: none;
+  stroke: rgba(20, 18, 16, 0.14);
+  stroke-width: 0.6;
+}
+.radar-axes line {
+  stroke: rgba(20, 18, 16, 0.10);
+  stroke-width: 0.5;
+}
+.radar-labels text {
+  font-family: var(--mono);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  fill: rgba(20, 18, 16, 0.5);
+}
+.radar-data {
+  fill: rgba(20, 18, 16, 0.06);
+  stroke: rgba(20, 18, 16, 0.58);
+  stroke-width: 0.9;
+  stroke-linejoin: miter;
+  will-change: points;
+}
+.radar-points circle {
+  fill: var(--ink);
+  stroke: var(--bg);
+  stroke-width: 1.2;
+}
+
+/* ── Readout rows ── */
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.readout__row {
+  display: grid;
+  grid-template-columns: 52px 1fr 44px;
+  align-items: center;
+  column-gap: 10px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.readout__row--seed {
+  grid-template-columns: 52px 1fr;
+  padding-top: 6px;
+  border-top: 1px solid rgba(20, 18, 16, 0.10);
+  margin-top: 4px;
+}
+.readout__key {
+  color: rgba(20, 18, 16, 0.52);
+  letter-spacing: 0.16em;
+}
+.readout__val {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  letter-spacing: 0.06em;
+  order: 3;
+}
+.readout__val--mono {
+  text-align: left;
+  color: var(--ink);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  order: 2;
+}
+.readout__bar {
+  position: relative;
+  height: 1px;
+  background: rgba(20, 18, 16, 0.10);
+  order: 2;
+  align-self: center;
+}
+.readout__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: rgba(20, 18, 16, 0.62);
+  will-change: width;
+}
+
+/* Hide the panel on narrow screens — no room alongside the film strip */
+@media (max-width: 900px) {
+  .instrument { display: none; }
+}
 
 /* ═════════════════════════════════════════════════════════════════ */
 
@@ -564,58 +548,40 @@ body.daylight .hero-tech__live { color: var(--ink); }
 
 /* Tablet */
 @media (max-width: 900px) {
-  .frame { padding: 18px 22px; }
-  .slide-title { font-size: clamp(28px, 5.5vw, 48px); }
-  .frame__nav { gap: 12px; }
-  .frame__tags { gap: 10px; flex-wrap: wrap; }
-  .bg-number { font-size: clamp(220px, 48vw, 520px); }
+  :root { --safe-x: 20px; --safe-y: 18px; }
+  .slide-title { font-size: clamp(44px, 7vw, 72px); }
+  .bg-number   { font-size: clamp(220px, 48vw, 520px); }
 }
 
 /* Mobile portrait & small phones */
 @media (max-width: 640px) {
-  :root { --chrome: 10px; --micro: 9px; }
+  :root { --safe-x: 14px; --safe-y: 14px; --chrome: 10px; --micro: 9px; }
 
-  .frame {
-    padding: 14px 16px;
-    gap: 8px;
-  }
-  .frame__top { gap: 4px; }
-  .frame__nav { gap: 10px; flex-wrap: wrap; }
-  .frame__tags { gap: 6px 10px; flex-wrap: wrap; }
-
-  /* Stack bottom content vertically on mobile */
-  .frame__bottom {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
+  /* Stack bottom rails so they don't collide under the sacred center column */
   .frame__meta {
-    align-items: flex-start;
-    text-align: left;
+    left: var(--safe-x);
+    right: var(--safe-x);
+    bottom: calc(var(--safe-y) + 20px);
+    justify-content: flex-end;
   }
+  .hero-tech { gap: 6px; }
 
-  .slide-title { font-size: clamp(22px, 7vw, 34px); }
-
-  .frame__counter { font-size: 9px; }
+  .slide-title { font-size: clamp(36px, 9vw, 56px); }
+  .slide-info  { max-width: 64vw; }
 
   .bg-number {
-    font-size: clamp(160px, 58vw, 300px);
-    bottom: -3vh;
-    left: -5vw;
+    font-size: clamp(200px, 62vw, 360px);
+    bottom: calc(var(--safe-y) - 18px);
+    left: calc(var(--safe-x) - 6px);
   }
 
-  /* Hide debug hint — no keyboard on phones */
-  #stock-label + .mono-xs.muted { display: none; }
   .tp-dfwv { display: none !important; }
 }
 
 /* Mobile landscape (short viewport) */
 @media (max-width: 900px) and (max-height: 500px) {
-  .frame { padding: 10px 16px; gap: 6px; }
-  .frame__bottom { flex-direction: row; align-items: flex-end; gap: 24px; }
-  .frame__tags { display: none; }        /* no room */
-  .slide-title { font-size: clamp(20px, 4.5vw, 28px); }
-  .bg-number { font-size: clamp(140px, 40vw, 260px); bottom: -6vh; }
+  .slide-title { font-size: clamp(28px, 5.2vw, 40px); }
+  .bg-number   { font-size: clamp(140px, 40vw, 260px); }
 }
 
 /* Peek (fullscreen image view) — mobile layout */
