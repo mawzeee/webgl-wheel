@@ -52,8 +52,6 @@ body {
 .mono-xs.muted      { color: rgba(239, 230, 214, 0.32); }
 .mono-xs.strong     { color: #EFE6D6; }
 .slide-title        { color: #EFE6D6; }
-.nav-btn            { color: #EFE6D6; border-color: rgba(239, 230, 214, 0.35); }
-.nav-btn:hover      { background: #EFE6D6; color: var(--bg-dark); border-color: #EFE6D6; }
 .bg-number          { color: #EFE6D6; }
 
 /* Transitions on chrome so colors ease with the bg swap */
@@ -62,7 +60,6 @@ body {
 .navbar__counter,
 .mono-xs,
 .slide-title,
-.nav-btn,
 .bg-number { transition: color 0.65s ease-in-out, background 0.65s ease-in-out, border-color 0.65s ease-in-out; }
 
 /* Daylight mode — cream bg + dark chrome text */
@@ -75,8 +72,6 @@ body.daylight .mono-xs            { color: var(--muted); }
 body.daylight .mono-xs.muted      { color: var(--faint); }
 body.daylight .mono-xs.strong     { color: var(--ink); }
 body.daylight .slide-title        { color: var(--ink); }
-body.daylight .nav-btn            { color: var(--ink); border-color: var(--faint); }
-body.daylight .nav-btn:hover      { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 body.daylight .bg-number          { color: var(--ink); }
 
 #canvas-container { touch-action: none; }
@@ -190,19 +185,9 @@ canvas { display: block; width: 100%; height: 100%; }
   justify-content: space-between;
   align-items: flex-end;
   gap: 48px;
-  opacity: 0;
 }
-
-.nav-buttons {
-  grid-column: 2;
-  grid-row: 3;
-  display: flex;
-  gap: 5px;
-  align-self: end;
-  justify-self: end;
-  transform: translateY(-44px);
-  opacity: 0;
-}
+/* Start children transparent so GSAP can reveal them individually — parent opacity would otherwise cascade and hide fixed-positioned spine/magazine titles */
+.slide-info, .frame__meta { opacity: 0; }
 
 /* ── Typography ── */
 
@@ -261,15 +246,7 @@ canvas { display: block; width: 100%; height: 100%; }
   will-change: transform;
 }
 
-/* ── Meta (bottom right) ── */
-
-.frame__meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  text-align: right;
-}
+/* Meta styling lives with the hero layout rules below — intentional empty section */
 
 /* ── Byline (bottom-left, below slide-info) ── */
 
@@ -278,29 +255,6 @@ canvas { display: block; width: 100%; height: 100%; }
   bottom: 22px;
   left: 28px;
   display: none; /* swapped into slide-info instead */
-}
-
-/* ── Nav buttons ── */
-
-.nav-btn {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 1px solid var(--faint);
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 14px;
-  color: var(--ink);
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
-}
-
-.nav-btn:hover {
-  background: var(--ink);
-  color: var(--bg);
-  border-color: var(--ink);
 }
 
 /* ── Peek (click-to-fullscreen frame) ── */
@@ -440,6 +394,155 @@ canvas { display: block; width: 100%; height: 100%; }
 
 /* Title is rendered as a Three.js plane with a custom dissolve shader (no DOM). */
 
+/* ═════════════════════════════════════════════════════════════════
+   LAYOUT VARIANTS — toggle via 1-5 keys. Defaults to "corner".
+   Each layout restructures where the title, exposure label, and meta
+   live. The base styles above assume "corner" (current).
+   ═════════════════════════════════════════════════════════════════ */
+
+
+/* ═════════════════════════════════════════════════════════════════
+   HERO LAYOUT — big display title middle-left, wrapped in technical
+   annotations (registration marks + camera-metadata row + live scroll
+   coordinate) to create editorial/mathematical contrast against the
+   display type.
+   ═════════════════════════════════════════════════════════════════ */
+
+.slide-info {
+  position: fixed;
+  left: 28px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 34vw;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  z-index: 40;
+}
+.slide-title {
+  font-size: clamp(64px, 7.6vw, 128px);
+  line-height: 0.88;
+  letter-spacing: 0.003em;
+}
+.slide-title .line-wrap { display: block; }
+
+/* Editorial rule after the exposure label */
+#exposure-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+#exposure-label::after {
+  content: '';
+  display: inline-block;
+  width: 36px;
+  height: 1px;
+  background: currentColor;
+  opacity: 0.5;
+}
+
+/* L-shaped registration marks at the FOUR VIEWPORT corners —
+   the technical frame that contains the entire composition. */
+.hero-mark {
+  position: fixed;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  color: rgba(239, 230, 214, 0.38);
+  z-index: 45;
+}
+.hero-mark::before,
+.hero-mark::after {
+  content: '';
+  position: absolute;
+  background: currentColor;
+}
+.hero-mark::before { top: 0; left: 0; width: 14px; height: 1px; }
+.hero-mark::after  { top: 0; left: 0; width: 1px;  height: 14px; }
+.hero-mark--tl { top: 36px; left: 36px; }
+.hero-mark--tr { top: 36px; right: 36px; transform: scaleX(-1); }
+.hero-mark--bl { bottom: 30px; left: 36px; transform: scaleY(-1); }
+.hero-mark--br { bottom: 30px; right: 36px; transform: scale(-1, -1); }
+body.daylight .hero-mark { color: rgba(20, 18, 16, 0.4); }
+
+/* Horizontal axis — full-width hairline with a transparent window in the center
+   so it never crosses in front of the film strip (behind it, essentially). */
+.hero-axis {
+  position: fixed;
+  left: 64px;
+  right: 64px;
+  bottom: 96px;
+  height: 1px;
+  margin: 0;
+  border: 0;
+  background: linear-gradient(
+    to right,
+    rgba(239, 230, 214, 0.22) 0%,
+    rgba(239, 230, 214, 0.22) 22%,
+    transparent 24%,
+    transparent 76%,
+    rgba(239, 230, 214, 0.22) 78%,
+    rgba(239, 230, 214, 0.22) 100%
+  );
+  z-index: 44;
+  pointer-events: none;
+}
+body.daylight .hero-axis {
+  background: linear-gradient(
+    to right,
+    rgba(20, 18, 16, 0.22) 0%,
+    rgba(20, 18, 16, 0.22) 22%,
+    transparent 24%,
+    transparent 76%,
+    rgba(20, 18, 16, 0.22) 78%,
+    rgba(20, 18, 16, 0.22) 100%
+  );
+}
+
+/* Shared type system for the bottom metadata rows (left + right) */
+.hero-tech,
+.frame__meta {
+  position: fixed;
+  bottom: 58px;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(239, 230, 214, 0.62);
+  font-feature-settings: 'tnum' 1;
+  z-index: 45;
+}
+.hero-tech { left: 64px; }
+.frame__meta {
+  right: 64px;
+  left: auto;
+  flex-direction: row;
+  text-align: right;
+}
+.hero-tech__sep { opacity: 0.35; }
+.hero-tech i {
+  font-style: normal;
+  font-size: 9px;
+  opacity: 0.7;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+.hero-tech__live {
+  color: rgba(239, 230, 214, 0.85);
+  font-variant-numeric: tabular-nums;
+  min-width: 84px; /* prevent jitter as digits change */
+  display: inline-block;
+  text-align: right;
+}
+body.daylight .hero-tech,
+body.daylight .frame__meta { color: var(--muted); }
+body.daylight .hero-tech__live { color: var(--ink); }
+
+/* ═════════════════════════════════════════════════════════════════ */
+
 /* ── Tweakpane overrides ── */
 
 .tp-dfwv {
@@ -493,13 +596,6 @@ canvas { display: block; width: 100%; height: 100%; }
 
   .slide-title { font-size: clamp(22px, 7vw, 34px); }
 
-  /* Bigger tap targets, reposition nav buttons */
-  .nav-buttons {
-    transform: translateY(-8px);
-    gap: 8px;
-  }
-  .nav-btn { width: 40px; height: 40px; font-size: 15px; }
-
   .frame__counter { font-size: 9px; }
 
   .bg-number {
@@ -520,7 +616,6 @@ canvas { display: block; width: 100%; height: 100%; }
   .frame__tags { display: none; }        /* no room */
   .slide-title { font-size: clamp(20px, 4.5vw, 28px); }
   .bg-number { font-size: clamp(140px, 40vw, 260px); bottom: -6vh; }
-  .nav-buttons { transform: translateY(-4px); }
 }
 
 /* Peek (fullscreen image view) — mobile layout */

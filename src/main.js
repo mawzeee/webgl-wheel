@@ -313,6 +313,13 @@ class WheelSlider {
     this.counterEl = document.getElementById('frame-counter');
     this.exposureEl = document.getElementById('exposure-label');
     this.bgNumEl = document.getElementById('bg-number');
+    // Hero tech annotations
+    this.techIdxEl = document.getElementById('hero-tech-idx');
+    this.techIsoEl = document.getElementById('hero-tech-iso');
+    this.techApEl  = document.getElementById('hero-tech-ap');
+    this.techShEl  = document.getElementById('hero-tech-sh');
+    this.techEvEl  = document.getElementById('hero-tech-ev');
+    this.techPhiEl = document.getElementById('hero-tech-phi');
 
     this.scroll = 0;
     this.scrollTarget = 0; // free-running float — no snap; arrows re-integer it
@@ -570,13 +577,6 @@ class WheelSlider {
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
 
-    document.getElementById('next-btn').addEventListener('click', () => {
-      this.scrollTarget = Math.round(this.scrollTarget) + 1;
-    });
-    document.getElementById('prev-btn').addEventListener('click', () => {
-      this.scrollTarget = Math.round(this.scrollTarget) - 1;
-    });
-
     // Peek close handlers
     document.getElementById('peek-close')?.addEventListener('click', () => this.closePeek());
     document.querySelector('.peek__backdrop')?.addEventListener('click', () => this.closePeek());
@@ -668,6 +668,13 @@ class WheelSlider {
     }
 
     this.checkFrame();
+
+    // Live scroll readout — φ updates every frame for a continuously-changing
+    // mathematical coordinate that plays against the instant title swap.
+    if (this.techPhiEl) {
+      const phi = ((this.scroll % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
+      this.techPhiEl.textContent = `φ ${phi.toFixed(4)}`;
+    }
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -679,7 +686,7 @@ class WheelSlider {
   enter() {
     this.introBend = 1.0;
 
-    this.titleEl.innerHTML = TITLES[0];
+    this.swapTitle(TITLES[0]);
     this.bgNumEl.textContent = '01';
     this.counterEl.textContent = '001 — 025';
     this.exposureEl.textContent = 'Exposure 001';
@@ -780,8 +787,8 @@ class WheelSlider {
     tl.to('#bg-number',     { opacity: 0.05, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
     tl.to('.navbar',        { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
     // counter is inside navbar now — revealed together
-    tl.to('.frame__bottom', { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
-    tl.to('.nav-buttons',   { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.75');
+    tl.to('.slide-info, .frame__meta', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
+    // .nav-buttons removed — drag + keyboard + click are enough to navigate
   }
 
   // ── WebGL text plane: serif "Film / Wheel" rendered to a high-res 2D
@@ -936,9 +943,26 @@ class WheelSlider {
     peek.classList.remove('open');
   }
 
-  // Title swap: instant — stays readable during fast scroll, no overlap artifacts
+  // Title swap: instant — stays readable during fast scroll, no overlap artifacts.
+  // Structured as .line-wrap > .line per line so spine/slate layouts can collapse
+  // to inline and other layouts can render as stacked blocks.
   swapTitle(html) {
-    this.titleEl.innerHTML = html;
+    const lines = html.split(/<br\s*\/?>/i);
+    const structured = lines
+      .map(l => `<span class="line-wrap"><span class="line">${l}</span></span>`)
+      .join('');
+    this.titleEl.innerHTML = structured;
+  }
+
+
+  // Deterministic-but-varied per-frame camera metadata — feels like real EXIF.
+  techMetaFor(i) {
+    const isos = [200, 400, 800, 100, 1600, 320];
+    const aps  = ['f/2.8', 'f/4',  'f/2',  'f/5.6', 'f/1.4', 'f/2.8'];
+    const shs  = ['1/60', '1/125', '1/250', '1/500', '1/1000', '1/60'];
+    const evs  = ['−0.3',  '0',    '+0.7', '−1.3',  '−0.7',  '+0.3'];
+    const k = i % isos.length;
+    return { iso: isos[k], ap: aps[k], sh: shs[k], ev: evs[k] };
   }
 
   checkFrame() {
@@ -951,10 +975,19 @@ class WheelSlider {
     this.frame = f;
 
     const num = String(f + 1).padStart(3, '0');
+    const total = String(IMAGE_COUNT).padStart(3, '0');
     this.swapTitle(TITLES[f]);
     this.exposureEl.textContent = `Exposure ${num}`;
-    this.counterEl.textContent = `${num} — ${String(IMAGE_COUNT).padStart(3, '0')}`;
+    this.counterEl.textContent = `${num} — ${total}`;
     this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
+
+    // Hero tech metadata (per-frame EXIF-style annotations)
+    const t = this.techMetaFor(f);
+    if (this.techIdxEl) this.techIdxEl.textContent = `${num}/${total}`;
+    if (this.techIsoEl) this.techIsoEl.textContent = `ISO ${t.iso}`;
+    if (this.techApEl)  this.techApEl.textContent  = t.ap;
+    if (this.techShEl)  this.techShEl.innerHTML    = `${t.sh}<i>s</i>`;
+    if (this.techEvEl)  this.techEvEl.textContent  = `EV ${t.ev}`;
   }
 
   // ── Tweakpane (hidden by default, toggle with D) ──

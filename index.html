@@ -37,28 +37,50 @@
         </div>
       </nav>
 
+      <!-- Full-screen technical frame: 4 registration marks at viewport corners -->
+      <span class="hero-mark hero-mark--tl" aria-hidden="true"></span>
+      <span class="hero-mark hero-mark--tr" aria-hidden="true"></span>
+      <span class="hero-mark hero-mark--bl" aria-hidden="true"></span>
+      <span class="hero-mark hero-mark--br" aria-hidden="true"></span>
+
+      <!-- Horizontal axis: a thin hairline that ties the bottom-left tech row
+           to the bottom-right meta row, forming the technical spine. -->
+      <hr class="hero-axis" aria-hidden="true" />
+
       <footer class="frame__bottom">
         <div class="slide-info">
           <span class="mono-xs" id="exposure-label">Exposure 001</span>
           <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">The Card</span></span><span class="line-wrap"><span class="line">Players</span></span></h2>
         </div>
 
+        <!-- Bottom-left: per-frame camera metadata -->
+        <div class="hero-tech" id="hero-tech" aria-hidden="true">
+          <span class="hero-tech__item" id="hero-tech-idx">001/025</span>
+          <span class="hero-tech__sep">·</span>
+          <span class="hero-tech__item" id="hero-tech-iso">ISO 200</span>
+          <span class="hero-tech__sep">·</span>
+          <span class="hero-tech__item" id="hero-tech-ap">f/2.8</span>
+          <span class="hero-tech__sep">·</span>
+          <span class="hero-tech__item" id="hero-tech-sh">1/125<i>s</i></span>
+          <span class="hero-tech__sep">·</span>
+          <span class="hero-tech__item" id="hero-tech-ev">EV −0.3</span>
+        </div>
+
+        <!-- Bottom-right: stock + live scroll coordinate (balances the left row) -->
         <div class="frame__meta">
-          <span class="mono-xs" id="stock-label">35mm · Kodak Vision 250D</span>
-          <span class="mono-xs muted">Press D for debug tools</span>
+          <span class="hero-tech__item" id="stock-label">35mm · Kodak Vision 250D</span>
+          <span class="hero-tech__sep">·</span>
+          <span class="hero-tech__item hero-tech__live" id="hero-tech-phi">φ 0.0000</span>
         </div>
       </footer>
-
-      <div class="nav-buttons">
-        <button id="prev-btn" class="nav-btn" aria-label="Previous frame">←</button>
-        <button id="next-btn" class="nav-btn" aria-label="Next frame">→</button>
-      </div>
 
       <div class="byline">
         <span class="mono-xs muted">By</span>
         <span class="mono-xs strong">Karim Saab</span>
       </div>
+
     </div>
+
 
     <!-- Peek view: opens when a frame is clicked -->
     <div class="peek" id="peek" aria-hidden="true">
