@@ -89,6 +89,9 @@ const params = {
   shadeExponent: 2.0,
   borderWidth: 0.04,
   sprocketsPerImage: 3,
+  // Focus differential — centered frame stays bright, neighbors dim/desaturate.
+  // Acts as the selection marker without any DOM overlay.
+  focusStrength: 0.75,
 };
 
 // ── Shaders ──
@@ -125,6 +128,7 @@ uniform float uAtlasRows;
 uniform float uProgress, uBend, uSlotH, uFilmStrength, uFilmBase;
 uniform float uShadeExponent, uTime, uGrain, uBorderW, uSprockets, uShutter;
 uniform float uExposure, uBrightness, uContrast, uSaturation, uVignette;
+uniform float uFocusStrength;
 varying vec2 vUv;
 varying float vNDotV;
 
@@ -266,10 +270,24 @@ void main() {
   float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));  // saturation toward luma
   color.rgb = mix(vec3(luma), color.rgb, uSaturation);
 
+  // ── Focus differential: the centered frame reads as "lit", neighbors
+  //    pull back ~1 stop, desaturate, and carry more grain. Drives the
+  //    "selection marker" without any DOM overlay.
+  //    Falloff is tight around the slot boundary (distSlots = 0.5), since
+  //    at rest only ~1.77 slots are visible vertically — so the effect has
+  //    to punch inside the centered frame's own footprint to read.
+  //    Dampened during scroll (cylShade already handles off-axis darkening).
+  float distSlots = abs(vUv.y - 0.5) / uSlotH;
+  float focusMask = 1.0 - smoothstep(0.3, 0.7, distSlots);
+  float focus = mix(1.0, focusMask, uFocusStrength * (1.0 - uBend * 0.7));
+  color.rgb *= mix(0.48, 1.0, focus);                      // exposure pull (~-1.1 stops)
+  float fLuma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+  color.rgb = mix(color.rgb, vec3(fLuma), (1.0 - focus) * 0.35);  // desat
+
   // Film grade intensifies with scroll velocity
   color.rgb = mix(color.rgb, filmGrade(color.rgb), mix(uFilmBase, uFilmStrength, uBend));
   color.rgb *= cylShade;
-  color.rgb += grain - uGrain * 0.5;
+  color.rgb += (grain - uGrain * 0.5) * mix(2.0, 1.0, focus);
 
   float vx = smoothstep(0.0,0.06,u)*smoothstep(1.0,0.94,u);
   float vy = smoothstep(0.0,0.04,lv)*smoothstep(1.0,0.96,lv);
@@ -469,6 +487,7 @@ class WheelSlider {
         uContrast: { value: params.contrast },
         uSaturation: { value: params.saturation },
         uVignette: { value: params.vignetteStrength },
+        uFocusStrength: { value: params.focusStrength },
       },
     });
 
@@ -657,6 +676,7 @@ class WheelSlider {
     u.uContrast.value = params.contrast;
     u.uSaturation.value = params.saturation;
     u.uVignette.value = params.vignetteStrength;
+    u.uFocusStrength.value = params.focusStrength;
 
     // Cursor parallax — smoothed tilt based on mouse position
     this.parallaxX += (this.mouseX - this.parallaxX) * 0.06;
@@ -1007,6 +1027,7 @@ class WheelSlider {
     look.addBinding(params, 'contrast',   { min: 0.5, max: 1.6, step: 0.01 });
     look.addBinding(params, 'saturation', { min: 0, max: 2.0, step: 0.01 });
     look.addBinding(params, 'vignetteStrength', { min: 0, max: 0.6, step: 0.01 });
+    look.addBinding(params, 'focusStrength', { min: 0, max: 1, step: 0.01 });
 
     const film = pane.addFolder({ title: 'Film' });
     film.addBinding(params, 'filmStrength', { min: 0, max: 1, step: 0.05 });
