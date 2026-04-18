@@ -2,6 +2,8 @@ import './style.css';
 import * as THREE from 'three';
 import { gsap } from 'gsap';
 import { Pane } from 'tweakpane';
+import { Router, parsePath, framePath } from './router.js';
+import { forwardSplice, reverseSplice, directLoadDetail, simpleReverse } from './transition.js';
 
 const IMAGE_COUNT = 25;
 const ATLAS_COLS = 5;
@@ -75,6 +77,25 @@ const SIG_AXES = SIGNATURES.map(s => [
   s.sat / 100,
   (s.seed % 1000) / 1000,
 ]);
+
+// Deterministic-but-varied per-frame camera metadata — feels like real EXIF.
+function techMetaFor(i) {
+  const isos = [200, 400, 800, 100, 1600, 320];
+  const aps  = ['f/2.8', 'f/4',  'f/2',  'f/5.6', 'f/1.4', 'f/2.8'];
+  const shs  = ['1/60', '1/125', '1/250', '1/500', '1/1000', '1/60'];
+  const evs  = ['−0.3',  '0',    '+0.7', '−1.3',  '−0.7',  '+0.3'];
+  const k = i % isos.length;
+  return { iso: isos[k], ap: aps[k], sh: shs[k], ev: evs[k] };
+}
+
+function buildFrameState() {
+  return {
+    titles: TITLES,
+    signatures: SIGNATURES,
+    tech: Array.from({ length: IMAGE_COUNT }, (_, i) => techMetaFor(i)),
+    imagePaths: IMAGE_PATHS,
+  };
+}
 
 // Viewport-adaptive strip params. Called at boot + on every resize.
 function responsiveStripParams() {
@@ -397,6 +418,7 @@ class WheelSlider {
     this.smoothBend = 0;
     this.dragging = false;
     this.introBend = 1;   // 1 = fully cylinder at start
+    this.spliceBend = 0;  // 0 at rest; splice transition tweens toward 1
     this.introActive = true;
     this.frame = 0;
     this.lastTooth = 0;
@@ -617,7 +639,7 @@ class WheelSlider {
       const dt = performance.now() - downT;
       // If barely moved + quick: treat as click → open peek on THE clicked image
       // Looser threshold accommodates finger taps (bigger contact area, slight jitter)
-      if (dx < 10 && dy < 10 && dt < 450 && !this.peekOpen) {
+      if (dx < 10 && dy < 10 && dt < 450 && !this.peekOpen && !this.introActive) {
         const tgt = e.target;
         if (!tgt || tgt.tagName !== 'CANVAS' || !this.mesh) return;
 
@@ -639,7 +661,7 @@ class WheelSlider {
         const wrapped = ((scrollV % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
         const f = Math.floor(wrapped) % IMAGE_COUNT;
 
-        this.openPeek(f);
+        if (this.onFrameClick) this.onFrameClick(f);
       }
     });
     window.addEventListener('pointermove', e => {
@@ -651,11 +673,11 @@ class WheelSlider {
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
 
-    // Peek close handlers
-    document.getElementById('peek-close')?.addEventListener('click', () => this.closePeek());
-    document.querySelector('.peek__backdrop')?.addEventListener('click', () => this.closePeek());
+    // Escape returns to home when on a detail route
     window.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && this.peekOpen) this.closePeek();
+      if (e.key === 'Escape' && this.peekOpen) {
+        history.back();
+      }
     });
 
     const onResize = () => {
@@ -704,7 +726,8 @@ class WheelSlider {
     this.smoothBend += (Math.min(vel * params.bendSensitivity, 1) - this.smoothBend) * params.bendSmoothing;
 
     // Combine intro bend (tweened) with interaction bend (velocity-driven)
-    const finalBend = Math.max(this.smoothBend, this.introBend);
+    // and splice-transition bend (tweened during page transition).
+    const finalBend = Math.max(this.smoothBend, this.introBend, this.spliceBend);
 
     // Audio: hum volume tracks interaction energy (lerp velocity only now)
     const activity = Math.min(vel * 4, 1);
@@ -1093,38 +1116,8 @@ class WheelSlider {
     });
   }
 
-  // Peek — opens a fullscreen projected view of the current centered frame
-  // Accepts an explicit frame index (from raycast click). Falls back to
-  // the currently-centered frame if not provided.
-  openPeek(forceFrame) {
-    const peek = document.getElementById('peek');
-    if (!peek) return;
-    this.peekOpen = true;
-
-    let f;
-    if (typeof forceFrame === 'number') {
-      f = forceFrame;
-    } else {
-      // Mirror shader center formula: scrollV at vUv.y=0.5 = scroll + 0.5
-      const s = this.scroll + 0.5;
-      const raw = ((s % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
-      f = Math.floor(raw) % IMAGE_COUNT;
-    }
-
-    document.getElementById('peek-image').src = IMAGE_PATHS[f];
-    document.getElementById('peek-title').textContent = TITLES[f].replace(/<br\s*\/?>/gi, ' ');
-    document.getElementById('peek-index').textContent =
-      `${String(f + 1).padStart(3, '0')} / ${String(IMAGE_COUNT).padStart(3, '0')}`;
-    peek.classList.add('open');
-    this.audio.snap();
-  }
-
-  closePeek() {
-    const peek = document.getElementById('peek');
-    if (!peek) return;
-    this.peekOpen = false;
-    peek.classList.remove('open');
-  }
+  // Snapshot of per-frame data the transition module needs.
+  getFrameState() { return buildFrameState(); }
 
   // Title swap: instant — stays readable during fast scroll, no overlap artifacts.
   // Structured as .line-wrap > .line per line so spine/slate layouts can collapse
@@ -1138,15 +1131,6 @@ class WheelSlider {
   }
 
 
-  // Deterministic-but-varied per-frame camera metadata — feels like real EXIF.
-  techMetaFor(i) {
-    const isos = [200, 400, 800, 100, 1600, 320];
-    const aps  = ['f/2.8', 'f/4',  'f/2',  'f/5.6', 'f/1.4', 'f/2.8'];
-    const shs  = ['1/60', '1/125', '1/250', '1/500', '1/1000', '1/60'];
-    const evs  = ['−0.3',  '0',    '+0.7', '−1.3',  '−0.7',  '+0.3'];
-    const k = i % isos.length;
-    return { iso: isos[k], ap: aps[k], sh: shs[k], ev: evs[k] };
-  }
 
   checkFrame() {
     // Match the fragment shader's centered-frame formula exactly:
@@ -1164,7 +1148,7 @@ class WheelSlider {
     this._updateInstrument(f);
 
     // Hero tech metadata (per-frame EXIF-style annotations)
-    const t = this.techMetaFor(f);
+    const t = techMetaFor(f);
     if (this.techIdxEl) this.techIdxEl.textContent = `${num}/${total}`;
     if (this.techIsoEl) this.techIsoEl.textContent = `ISO ${t.iso}`;
     if (this.techApEl)  this.techApEl.textContent  = t.ap;
@@ -1345,4 +1329,67 @@ class WheelSlider {
   }
 }
 
-new WheelSlider();
+// ── Bootstrap ────────────────────────────────────────────────────
+
+const slider = new WheelSlider();
+const detailRoot = document.getElementById('detail');
+
+// Tracks whether the current detail route was reached via forwardSplice.
+// If not (direct URL load / reload), back-nav runs simpleReverse since the
+// slider may still be booting and the FLIP shard has no valid source rect.
+let spliceEngaged = false;
+
+const router = new Router({
+  onLeave: async (prev, next, direction) => {
+    if (prev.name === 'frame' && next.name === 'home') {
+      if (spliceEngaged && slider.mesh && !slider.introActive) {
+        await reverseSplice({ slider, frame: prev.frame, detailRoot, frameState: buildFrameState() });
+      } else {
+        await simpleReverse({ detailRoot });
+      }
+      spliceEngaged = false;
+      slider.peekOpen = false;
+    }
+  },
+  onEnter: async (next, prev, direction) => {
+    if (next.name === 'frame') {
+      // Can't splice before textures + mesh exist. If boot isn't done yet, direct-load.
+      if (!slider.mesh || slider.introActive) {
+        directLoadDetail({ frame: next.frame, detailRoot, frameState: buildFrameState() });
+        slider.peekOpen = true;
+        spliceEngaged = false;
+        return;
+      }
+      slider.peekOpen = true;
+      spliceEngaged = true;
+      await forwardSplice({ slider, frame: next.frame, detailRoot, frameState: buildFrameState() });
+    }
+  },
+});
+
+// Wire slider → router
+slider.onFrameClick = (f) => {
+  router.navigate({ name: 'frame', frame: f });
+};
+
+router.init();
+
+// Delegate clicks on in-app links (detail page back button, footer)
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('a[data-nav="home"]');
+  if (!link) return;
+  e.preventDefault();
+  router.navigate({ name: 'home' });
+});
+
+// Handle direct load on /frame/:id — render detail immediately (doesn't need slider mesh).
+// Slider still boots in the background but its chrome stays hidden via the
+// route-frame body class. When the user hits back, reverseSplice runs the
+// "rise" animation on whatever state the slider has landed in.
+(function handleInitialRoute() {
+  const initial = parsePath(location.pathname);
+  if (initial.name !== 'frame') return;
+  slider.peekOpen = true;
+  directLoadDetail({ frame: initial.frame, detailRoot, frameState: buildFrameState() });
+  router.current = initial;
+})();

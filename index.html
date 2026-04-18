@@ -13,6 +13,14 @@
   </head>
   <body>
 
+    <!-- Void backdrop: full-bleed black sitting behind the home card.
+         At rest the home card (canvas + chrome) covers 100% of the viewport
+         so the backdrop is never visible. During a route transition, GSAP
+         flips this to opaque so the home card — now scaled 0.8 and lifted
+         -30vh — reads as a "white card on black void", exactly like the
+         Codrops reference. This is the entire depth effect. -->
+    <div class="void-backdrop" id="void-backdrop" aria-hidden="true"></div>
+
     <h1 class="bg-number" id="bg-number">01</h1>
 
     <!-- Pre-loader: minimal, tiny mono counter on the dark cinema bg -->
@@ -117,17 +125,8 @@
     </div>
 
 
-    <!-- Peek view: opens when a frame is clicked -->
-    <div class="peek" id="peek" aria-hidden="true">
-      <div class="peek__backdrop"></div>
-      <img class="peek__image" id="peek-image" alt="" />
-      <div class="peek__meta">
-        <span class="mono-xs" id="peek-index">001 / 025</span>
-        <h3 class="peek__title" id="peek-title">The Card Players</h3>
-        <span class="mono-xs muted" id="peek-stock">35mm · Kodak Vision 250D</span>
-      </div>
-      <button class="peek__close" id="peek-close" aria-label="Close">Close · Esc</button>
-    </div>
+    <!-- Detail page — rendered on /frame/:id. Hidden on /. -->
+    <main class="detail" id="detail" aria-hidden="true"></main>
 
     <script type="module" src="/src/main.js"></script>
   </body>

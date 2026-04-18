@@ -8,6 +8,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'Round8';
+  src: url('/fonts/round8-one.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --bg: #F0EAE0;
   --bg-dark: #15100B;    /* cinema-before-projection — default on page load */
@@ -17,7 +25,7 @@
 
   --mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --body: 'Space Grotesk', sans-serif;
-  --display: 'Bulevar', serif;
+  --display: 'Round8', 'Bulevar', serif;
 
   --chrome: 11px;
   --micro: 10px;
@@ -608,4 +616,426 @@ body.daylight .hero-tech__live { color: var(--ink); }
     text-align: center;
   }
   .peek__close { bottom: 20px; }
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   ROUTE TRANSITION — HOME → /frame/:id
+   The home scene (canvas + chrome) stays mounted underneath.
+   The detail page is a fullscreen overlay that clip-path reveals
+   from the bottom while the splice shard (DOM img at the clicked
+   frame's screen rect) FLIPs into the hero position.
+   ────────────────────────────────────────────────────────────── */
+
+/* Canvas opacity + chrome opacity are driven by GSAP in transition.js.
+   route-frame class disables canvas + chrome pointer-events so the
+   detail overlay can own interactions while the scene continues rendering. */
+body.route-frame #canvas-container,
+body.route-frame .frame {
+  pointer-events: none;
+}
+
+/* Void backdrop — pitch-black layer sitting behind the home card at z:5
+   (below #canvas-container at z:10). Invisible at rest; GSAP pumps opacity
+   to 1 when a route transition begins. Combined with the canvas-container
+   getting its own --bg bg (below), this produces the "card recedes into
+   black void" effect seen in the Codrops reference. */
+.void-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  will-change: opacity;
+}
+
+/* Give the home canvas container its own beige bg (in daylight mode) so
+   when it scales down during a transition it reads as a solid beige CARD
+   over the black void — not a transparent ghost letting the void bleed
+   through. The transition matches the body's 0.65s bg fade so the intro's
+   brown→beige flip doesn't cause the canvas to snap while body eases. */
+#canvas-container {
+  transition: background 0.65s ease-in-out;
+}
+body.daylight #canvas-container {
+  background: var(--bg);
+}
+
+
+/* SPLICE SHARD — DOM copy of the clicked frame, positioned over the canvas,
+   transitions into the detail hero rect. Hidden by default. */
+.splice-shard {
+  position: fixed;
+  left: 0;
+  top: 0;
+  object-fit: cover;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0;
+  will-change: transform, width, height, left, top, opacity;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+.splice-shard.active {
+  opacity: 1;
+}
+
+/* ──────────────────────────────────────────────────────────────
+   DETAIL PAGE
+   ────────────────────────────────────────────────────────────── */
+
+.detail {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--ink);
+  transform: translate3d(0, 100%, 0);
+  pointer-events: none;
+  -webkit-font-smoothing: antialiased;
+  will-change: transform;
+}
+.detail[aria-hidden="false"] {
+  pointer-events: auto;
+}
+
+.detail__page {
+  display: block;
+  min-height: 100vh;
+}
+
+/* ── First viewport: top bar · centered title · grid pinned to bottom.
+     The whole hero section fits exactly in 100vh with 20px gutter from
+     every edge (including 20px from bottom of viewport to grid). ── */
+
+.detail-hero-section {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.detail-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: var(--chrome);
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.detail-top__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  padding: 6px 0;
+  transition: gap 0.25s ease-out, opacity 0.2s;
+  opacity: 0.9;
+}
+.detail-top__back:hover { opacity: 1; gap: 14px; }
+.detail-top__arrow { display: inline-block; transition: transform 0.25s ease-out; }
+.detail-top__back:hover .detail-top__arrow { transform: translateX(-3px); }
+.detail-top__idx {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ── Header block: eyebrow + display title + exif row.
+     Sits ABOVE the grid. Title is full-line width, center-aligned. ── */
+
+.detail-header {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 0;
+  width: 100%;
+  text-align: center;
+}
+.detail-header__eyebrow {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.detail-header__title {
+  font-family: var(--display);
+  font-weight: 400;
+  /* Display-scale: fills the line on desktop. The Round8 display font
+     carries a tall em-box, so we pull line-height below 1 and cancel the
+     mask's padding with a matching negative margin to get poster-tight
+     stacking without clipped descenders. */
+  font-size: clamp(64px, 11vw, 220px);
+  line-height: 0.88;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--ink);
+  width: 100%;
+  text-align: center;
+  text-wrap: balance;
+}
+.detail-header__line {
+  display: block;
+  overflow: hidden;
+  padding-bottom: 0.06em;     /* descender room for the slide-up mask */
+  margin-bottom: -0.06em;     /* cancels the padding so lines stack tight */
+}
+.detail-header__line:last-child {
+  margin-bottom: 0;
+}
+.detail-header__line > span {
+  display: block;
+  will-change: transform;
+}
+.detail-header__exif {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: var(--chrome);
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+.detail-header__sep { opacity: 0.5; }
+
+/* ── 12-col grid — 5 images in a row: [2c][2c][4c center][2c][2c].
+     The 4-col center cell matches the home slider's on-screen width
+     (~32% viewport), so the clicked frame reads as the same image just
+     placed into the spread. The four flanking cells are half that width.
+     20px margin around, 20px gutter between. ── */
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 20px;
+  padding: 0;
+  margin: 0;
+  align-items: center;
+}
+.detail-grid__cell {
+  grid-column: span 2;
+  margin: 0;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: #111;
+  position: relative;
+}
+/* Empty center placeholder — 4 cols of intentional negative space where
+   the slider's frame image would sit. Its 4-col footprint is what keeps
+   the flanking images at the exact 2c width they'd have with a center
+   image present. No background, no aspect-ratio (collapses to 0 height,
+   which is fine since row height is set by the 2c flankers). */
+.detail-grid__cell--empty {
+  grid-column: span 4;
+  background: transparent;
+  aspect-ratio: auto;
+}
+.detail-grid__cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Story section ───────────────────────────────────────────── */
+
+.detail-story {
+  padding: clamp(120px, 18vh, 220px) var(--safe-x);
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.detail-story__inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 56px;
+}
+.detail-story__eyebrow {
+  display: block;
+  font-family: var(--mono);
+  font-size: var(--micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.detail-story__lead {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(30px, 4.2vw, 72px);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  margin: 0;
+  max-width: 22ch;
+}
+.detail-story__meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  border-top: 1px solid rgba(20,18,16,0.12);
+  padding-top: 28px;
+  margin-top: 12px;
+  max-width: 720px;
+}
+.detail-story__col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.detail-story__key {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.detail-story__val {
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* ── Signature section ───────────────────────────────────────── */
+
+.detail-sig {
+  padding: clamp(80px, 12vh, 160px) var(--safe-x) clamp(120px, 18vh, 200px);
+  border-top: 1px solid rgba(20,18,16,0.08);
+  max-width: 1600px;
+  margin: 0 auto;
+}
+.detail-sig__inner {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 40px;
+}
+.detail-sig__eyebrow {
+  font-family: var(--mono);
+  font-size: var(--micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.detail-sig__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 720px;
+}
+.detail-sig__row {
+  display: grid;
+  grid-template-columns: 120px 1fr 80px;
+  gap: 24px;
+  align-items: center;
+  padding: 18px 0;
+  border-bottom: 1px solid rgba(20,18,16,0.08);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.detail-sig__row:last-child {
+  border-bottom: none;
+}
+.detail-sig__key {
+  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+}
+.detail-sig__bar {
+  display: block;
+  height: 2px;
+  background: rgba(20,18,16,0.10);
+  position: relative;
+  overflow: hidden;
+}
+.detail-sig__bar i {
+  display: block;
+  height: 100%;
+  background: var(--ink);
+  width: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+.detail.active .detail-sig__bar i {
+  transform: scaleX(1);
+  transition: transform 1.2s cubic-bezier(0.7, 0, 0.2, 1) 0.4s;
+}
+.detail-sig__val {
+  text-align: right;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.detail-sig__row--seed .detail-sig__val {
+  font-size: 11px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────── */
+
+.detail-foot {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+  padding: 32px var(--safe-x);
+  border-top: 1px solid rgba(20,18,16,0.12);
+  font-family: var(--mono);
+  font-size: var(--chrome);
+  letter-spacing: var(--ls);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.detail-foot__back {
+  justify-self: end;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 500;
+  transition: opacity 0.2s;
+}
+.detail-foot__back:hover { opacity: 0.6; }
+
+/* ── Responsive ──────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .detail-story__meta {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  /* Grid falls back on tablets — 2×2 flankers, no empty center slot. */
+  .detail-grid__cell { grid-column: span 6; }
+  .detail-grid__cell--empty { display: none; }
+  .detail-hero__foot {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    justify-items: start;
+  }
+  .detail-hero__scroll { display: none; }
+  .detail-hero__stock { justify-self: start; text-align: left; }
+}
+
+@media (max-width: 480px) {
+  .detail-sig__row {
+    grid-template-columns: 100px 1fr 60px;
+    gap: 14px;
+  }
+  .detail-story__meta {
+    grid-template-columns: 1fr;
+  }
 }
