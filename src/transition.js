@@ -51,16 +51,16 @@ export function forwardSplice({ slider, frame, detailRoot, frameState }) {
 
   const tl = gsap.timeline();
 
-  // HOME LAYER RECEDES — EXACT values from blenkcode/codrops-demo:
-  // y: -30vh, scale: 0.8, opacity: 0.4. The canvas-container now carries
-  // its own beige bg (body.daylight #canvas-container in style.css), so at
-  // 0.4 opacity it reads as a translucent beige card floating in front of
-  // the black void — same silhouette as the reference's white card.
+  // HOME LAYER RECEDES — scale + translate from Codrops demo. Opacity lifted
+  // from the Codrops 0.4 → 0.65 because our card is DARK on a black void —
+  // at 0.4 the card disappears into the void with no depth contrast. 0.65
+  // keeps the card visibly present as it recedes (our equivalent of 40%
+  // white-on-black in the reference).
   const homeLayer = [canvasEl, frameChrome];
   tl.to(homeLayer, {
     y: '-30vh',
     scale: 0.8,
-    opacity: 0.4,
+    opacity: 0.65,
     duration: DUR,
     ease: EASE,
     force3D: true,

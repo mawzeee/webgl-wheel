@@ -9,7 +9,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <!-- Inline bg so the very first paint is brown — no white flash before bundled CSS loads -->
-    <style>html, body { background: #15100B; margin: 0; }</style>
+    <style>
+      html, body { background: #000; margin: 0; color: #EFE6D6; }
+      #pre-loader, #pre-loader-pct { color: #EFE6D6 !important; }
+    </style>
   </head>
   <body>
 
@@ -22,6 +25,17 @@
     <div class="void-backdrop" id="void-backdrop" aria-hidden="true"></div>
 
     <h1 class="bg-number" id="bg-number">01</h1>
+
+    <!-- Viewfinder: four terminal-style corner brackets locking onto the
+         currently-centered frame. Fixed in screen center; the slider
+         scrolls images through it. A small pulse fires on every frame
+         change so the "lock-on" reads kinetically. -->
+    <div class="viewfinder" id="viewfinder" aria-hidden="true">
+      <span class="viewfinder__corner viewfinder__corner--tl"></span>
+      <span class="viewfinder__corner viewfinder__corner--tr"></span>
+      <span class="viewfinder__corner viewfinder__corner--bl"></span>
+      <span class="viewfinder__corner viewfinder__corner--br"></span>
+    </div>
 
     <!-- Pre-loader: minimal, tiny mono counter on the dark cinema bg -->
     <div class="pre-loader" id="pre-loader" aria-hidden="true">

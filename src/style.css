@@ -17,11 +17,11 @@
 }
 
 :root {
-  --bg: #F0EAE0;
-  --bg-dark: #15100B;    /* cinema-before-projection — default on page load */
-  --ink: #141210;
-  --muted: #8A7E74;
-  --faint: #C7BCAE;
+  --bg: #1A1A1A;          /* detail page / secondary surface — slightly lifted from bg-dark */
+  --bg-dark: #141414;     /* main immersive dark. Used on the home throughout — no daylight shift. */
+  --ink: #EFE6D6;         /* primary text — cream, readable on the dark */
+  --muted: #9A938A;       /* secondary text, muted on dark */
+  --faint: #4A4641;       /* hairlines, dividers */
 
   --mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --body: 'Space Grotesk', sans-serif;
@@ -47,12 +47,15 @@ body {
   width: 100vw;
   height: 100dvh;
   overflow: hidden;
-  background: var(--bg-dark);
+  /* Pure black is the VOID — always behind everything. The home is a
+     lighter-dark "card" on top (see #canvas-container below). During the
+     forward transition the card scales back and the black void shows
+     around its edges — that's the depth. */
+  background: #000;
   font-family: var(--body);
   font-size: 14px;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
-  transition: background 0.65s ease-in-out;
 }
 
 /* Default (dark) chrome: light text so it's readable on --bg-dark */
@@ -104,12 +107,64 @@ body.daylight .bg-number          { color: var(--ink); }
   z-index: 1;
 }
 
+/* ── Viewfinder: four L-shaped corners locking onto the centered frame.
+     Size derived from the slider's stripWidth (the image occupies ~32% of
+     the viewport width at desktop defaults). --vf-size can be updated from
+     JS on resize so the viewfinder always matches the image. ── */
+
+.viewfinder {
+  --vf-size: 32vw;
+  --vf-corner: 24px;
+  --vf-thick: 1px;
+  --vf-color: rgba(239, 230, 214, 0.85);
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  width: var(--vf-size);
+  height: var(--vf-size);
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0; /* revealed by GSAP after prelude */
+  will-change: transform;
+}
+
+.viewfinder__corner {
+  position: absolute;
+  width: var(--vf-corner);
+  height: var(--vf-corner);
+  border-style: solid;
+  border-color: var(--vf-color);
+  border-width: 0;
+}
+.viewfinder__corner--tl { top: 0; left: 0;    border-top-width: var(--vf-thick); border-left-width: var(--vf-thick); }
+.viewfinder__corner--tr { top: 0; right: 0;   border-top-width: var(--vf-thick); border-right-width: var(--vf-thick); }
+.viewfinder__corner--bl { bottom: 0; left: 0; border-bottom-width: var(--vf-thick); border-left-width: var(--vf-thick); }
+.viewfinder__corner--br { bottom: 0; right: 0; border-bottom-width: var(--vf-thick); border-right-width: var(--vf-thick); }
+
+/* Frame-change pulse — quick scale down/up so the lock-on registers kinetically. */
+.viewfinder.pulse {
+  animation: vf-pulse 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes vf-pulse {
+  0%   { transform: translate(-50%, -50%) scale(0.955); }
+  60%  { transform: translate(-50%, -50%) scale(1.012); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Hide viewfinder while on detail route — no longer framing anything. */
+body.route-frame .viewfinder { opacity: 0 !important; }
+
 /* ── Canvas ── */
 #canvas-container {
   position: fixed;
   inset: 0;
   z-index: 10;
   pointer-events: none;
+  /* The "page" color — explicitly lighter than the pure-black body so the
+     home reads as a card sitting on the void. When the forward transition
+     scales this container down, the void (body #000) shows around it. */
+  background: var(--bg-dark);
 }
 
 canvas { display: block; width: 100%; height: 100%; }
@@ -320,18 +375,18 @@ canvas { display: block; width: 100%; height: 100%; }
   align-items: center;
   justify-content: center;
   font-family: var(--mono);
-  font-family: var(--mono);
   font-size: var(--micro);
   letter-spacing: 0.32em;
-  color: #EFE6D6;
-  opacity: 0.78;
+  color: #EFE6D6 !important;
+  opacity: 1;
   pointer-events: none;
   user-select: none;
   font-feature-settings: 'tnum' 1;
 }
 
-.pre-loader::before { content: '[ '; color: rgba(239, 230, 214, 0.5); }
-.pre-loader::after { content: ' ]'; color: rgba(239, 230, 214, 0.5); }
+.pre-loader::before { content: '[ '; color: rgba(239, 230, 214, 0.55) !important; }
+.pre-loader::after { content: ' ]'; color: rgba(239, 230, 214, 0.55) !important; }
+.pre-loader #pre-loader-pct { color: #EFE6D6 !important; }
 
 /* Title is rendered as a Three.js plane with a custom dissolve shader (no DOM). */
 
@@ -426,10 +481,10 @@ body.daylight .hero-tech__live { color: var(--ink); }
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(20, 18, 16, 0.52);
+  color: rgba(239, 230, 214, 0.52);
   margin-bottom: 14px;
   padding-bottom: 8px;
-  border-bottom: 1px solid rgba(20, 18, 16, 0.12);
+  border-bottom: 1px solid rgba(239, 230, 214, 0.12);
 }
 .instrument__index {
   color: var(--ink);
@@ -447,11 +502,11 @@ body.daylight .hero-tech__live { color: var(--ink); }
 }
 .radar-grid {
   fill: none;
-  stroke: rgba(20, 18, 16, 0.14);
+  stroke: rgba(239, 230, 214, 0.14);
   stroke-width: 0.6;
 }
 .radar-axes line {
-  stroke: rgba(20, 18, 16, 0.10);
+  stroke: rgba(239, 230, 214, 0.10);
   stroke-width: 0.5;
 }
 .radar-labels text {
@@ -459,11 +514,11 @@ body.daylight .hero-tech__live { color: var(--ink); }
   font-size: 7px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  fill: rgba(20, 18, 16, 0.5);
+  fill: rgba(239, 230, 214, 0.5);
 }
 .radar-data {
-  fill: rgba(20, 18, 16, 0.06);
-  stroke: rgba(20, 18, 16, 0.58);
+  fill: rgba(239, 230, 214, 0.06);
+  stroke: rgba(239, 230, 214, 0.58);
   stroke-width: 0.9;
   stroke-linejoin: miter;
   will-change: points;
@@ -492,11 +547,11 @@ body.daylight .hero-tech__live { color: var(--ink); }
 .readout__row--seed {
   grid-template-columns: 52px 1fr;
   padding-top: 6px;
-  border-top: 1px solid rgba(20, 18, 16, 0.10);
+  border-top: 1px solid rgba(239, 230, 214, 0.10);
   margin-top: 4px;
 }
 .readout__key {
-  color: rgba(20, 18, 16, 0.52);
+  color: rgba(239, 230, 214, 0.52);
   letter-spacing: 0.16em;
 }
 .readout__val {
@@ -516,7 +571,7 @@ body.daylight .hero-tech__live { color: var(--ink); }
 .readout__bar {
   position: relative;
   height: 1px;
-  background: rgba(20, 18, 16, 0.10);
+  background: rgba(239, 230, 214, 0.10);
   order: 2;
   align-self: center;
 }
@@ -524,7 +579,7 @@ body.daylight .hero-tech__live { color: var(--ink); }
   position: absolute;
   inset: 0 auto 0 0;
   width: 0;
-  background: rgba(20, 18, 16, 0.62);
+  background: rgba(239, 230, 214, 0.62);
   will-change: width;
 }
 
@@ -650,17 +705,7 @@ body.route-frame .frame {
   will-change: opacity;
 }
 
-/* Give the home canvas container its own beige bg (in daylight mode) so
-   when it scales down during a transition it reads as a solid beige CARD
-   over the black void — not a transparent ghost letting the void bleed
-   through. The transition matches the body's 0.65s bg fade so the intro's
-   brown→beige flip doesn't cause the canvas to snap while body eases. */
-#canvas-container {
-  transition: background 0.65s ease-in-out;
-}
-body.daylight #canvas-container {
-  background: var(--bg);
-}
+/* canvas-container bg is set in its main rule above (var(--bg-dark)). */
 
 
 /* SPLICE SHARD — DOM copy of the clicked frame, positioned over the canvas,
@@ -887,7 +932,7 @@ body.daylight #canvas-container {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 24px;
-  border-top: 1px solid rgba(20,18,16,0.12);
+  border-top: 1px solid rgba(239,230,214,0.12);
   padding-top: 28px;
   margin-top: 12px;
   max-width: 720px;
@@ -915,7 +960,7 @@ body.daylight #canvas-container {
 
 .detail-sig {
   padding: clamp(80px, 12vh, 160px) var(--safe-x) clamp(120px, 18vh, 200px);
-  border-top: 1px solid rgba(20,18,16,0.08);
+  border-top: 1px solid rgba(239,230,214,0.08);
   max-width: 1600px;
   margin: 0 auto;
 }
@@ -943,7 +988,7 @@ body.daylight #canvas-container {
   gap: 24px;
   align-items: center;
   padding: 18px 0;
-  border-bottom: 1px solid rgba(20,18,16,0.08);
+  border-bottom: 1px solid rgba(239,230,214,0.08);
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
@@ -962,7 +1007,7 @@ body.daylight #canvas-container {
 .detail-sig__bar {
   display: block;
   height: 2px;
-  background: rgba(20,18,16,0.10);
+  background: rgba(239,230,214,0.10);
   position: relative;
   overflow: hidden;
 }
@@ -996,7 +1041,7 @@ body.daylight #canvas-container {
   align-items: center;
   gap: 24px;
   padding: 32px var(--safe-x);
-  border-top: 1px solid rgba(20,18,16,0.12);
+  border-top: 1px solid rgba(239,230,214,0.12);
   font-family: var(--mono);
   font-size: var(--chrome);
   letter-spacing: var(--ls);

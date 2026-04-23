@@ -385,6 +385,7 @@ class WheelSlider {
     this.container = document.getElementById('canvas-container');
     this.titleEl = document.getElementById('slide-title');
     this.bgNumEl = document.getElementById('bg-number');
+    this.viewfinderEl = document.getElementById('viewfinder');
     // Instrument panel DOM
     this.instr = {
       index:   document.getElementById('instrument-index'),
@@ -428,12 +429,14 @@ class WheelSlider {
     this.mouseX = 0; this.mouseY = 0;
     this.parallaxX = 0; this.parallaxY = 0;
     this.peekOpen = false;
+    this._snapTween = null;
     this.startTime = performance.now();
     this.audio = new AudioKit();
     this.loadPct = 0;
 
     // Apply viewport-adaptive defaults before creating geometry/camera
     Object.assign(params, responsiveStripParams());
+    this._syncViewfinderSize();
     this.initScene();
     // Wait for textures + loader + the serif font (canvas needs it for crisp text)
     Promise.all([
@@ -589,7 +592,7 @@ class WheelSlider {
       return py;
     };
 
-    // Wheel: free-scroll — delta goes straight to target, loop lerps. No snap.
+    // Wheel: free-scroll — delta goes straight to target, loop lerps.
     window.addEventListener('wheel', e => {
       if (this.introActive || this.peekOpen) return;
       this.audio.start();
@@ -683,6 +686,7 @@ class WheelSlider {
     const onResize = () => {
       // Re-apply viewport-adaptive params
       Object.assign(params, responsiveStripParams());
+    this._syncViewfinderSize();
 
       const w = this.container.clientWidth || window.innerWidth;
       const h = this.container.clientHeight || window.innerHeight;
@@ -789,6 +793,25 @@ class WheelSlider {
       const phi = ((this.scroll % IMAGE_COUNT) + IMAGE_COUNT) % IMAGE_COUNT;
       this.techPhiEl.textContent = `φ ${phi.toFixed(4)}`;
     }
+
+    // Magnetic snap — CONTINUOUS GLIDE.
+    // No GSAP tween. After 140ms idle, scrollTarget drifts gently toward the
+    // nearest integer each frame (2.5% of remaining delta). The loop's
+    // scrollSmoothing (0.11) then pulls scroll toward that slowly-drifting
+    // target. Two nested exponential decays = long, smooth, airplane-landing
+    // glide. ~1.5s to settle on a single-frame snap, longer on flings.
+    const idleSince = performance.now() - this.lastInputTime;
+    if (!this.dragging && !this.introActive && !this.peekOpen && idleSince > 140) {
+      const nearest = Math.round(this.scrollTarget);
+      const delta = nearest - this.scrollTarget;
+      if (Math.abs(delta) > 0.0005) {
+        this.scrollTarget += delta * 0.025;
+      } else if (Math.abs(nearest - this.scroll) < 0.001) {
+        this.scrollTarget = nearest;
+        this.scroll = nearest;
+      }
+    }
+
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -885,10 +908,8 @@ class WheelSlider {
       ease: fadeEase,
     }, 'hold');
 
-    // Flip to "daylight" — CSS transition handles the bg + chrome text colors
-    // together via a class (more robust than tweening inline style, especially
-    // on mobile where backgroundColor tweens can fail to commit visually).
-    tl.add(() => document.body.classList.add('daylight'), 'hold');
+    // Daylight shift killed — MAWZE stays in immersive-dark throughout.
+    // (Previously: `document.body.classList.add('daylight')` faded bg brown→beige.)
 
     // ─────────────────────────────────────────────────────────────────
     //  ACT 4  — HERO (1.0s, climactic)
@@ -909,10 +930,11 @@ class WheelSlider {
     }, 'hero+=0.1');
 
     // Chrome reveals on the wheel's deceleration tail — gentle staircase
-    tl.to('#bg-number',     { opacity: 0.05, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
+    tl.to('#bg-number',     { opacity: 0.28, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
     tl.to('.navbar',        { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
     // counter is inside navbar now — revealed together
     tl.to('.slide-info, .frame__meta, .hero-tech', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
+    tl.to('.viewfinder', { opacity: 1, duration: 0.45, ease: 'power2.out' }, 'hero+=0.9');
     // Instrument panel fades in on the deceleration tail alongside the rest
     // of the chrome — already pre-seeded with frame 0 so no value roll.
     tl.to('.instrument', { opacity: 1, duration: 0.6, ease: 'power2.out' }, 'hero+=0.75');
@@ -1100,6 +1122,52 @@ class WheelSlider {
   //    actual texture load. Resolves only when BOTH are complete (honest). ──
   _runLoader() {
     const pctEl = document.getElementById('pre-loader-pct');
+    const loaderEl = document.getElementById('pre-loader');
+
+    // ── DEBUG: log every angle on the loader's color so we can see exactly
+    //    what the browser is computing. Check the browser console.
+    if (loaderEl && pctEl) {
+      const cs1 = window.getComputedStyle(loaderEl);
+      const cs2 = window.getComputedStyle(pctEl);
+      const rootStyle = window.getComputedStyle(document.documentElement);
+      const bodyStyle = window.getComputedStyle(document.body);
+
+      console.groupCollapsed('%c[LOADER COLOR DEBUG]', 'color: #EFE6D6; background: #000; padding: 4px 8px; font-weight: bold;');
+      console.log('--ink (root var):', rootStyle.getPropertyValue('--ink').trim() || '(not set)');
+      console.log('body computed color:', bodyStyle.color);
+      console.log('body computed background:', bodyStyle.backgroundColor);
+      console.log('.pre-loader computed color:', cs1.color);
+      console.log('.pre-loader computed opacity:', cs1.opacity);
+      console.log('.pre-loader computed background:', cs1.backgroundColor);
+      console.log('#pre-loader-pct computed color:', cs2.color);
+      console.log('#pre-loader-pct computed opacity:', cs2.opacity);
+      console.log('#pre-loader-pct inline style.color:', pctEl.style.color || '(none)');
+      console.log('loaderEl inline style.color:', loaderEl.style.color || '(none)');
+      console.log('loaderEl classList:', Array.from(loaderEl.classList));
+      console.log('pctEl parent:', pctEl.parentElement?.id, pctEl.parentElement?.className);
+      console.log('pctEl innerHTML:', pctEl.innerHTML);
+
+      // Dump every CSS rule that matches .pre-loader
+      const rules = [];
+      for (const sheet of document.styleSheets) {
+        try {
+          for (const rule of sheet.cssRules || []) {
+            if (rule.selectorText && /pre-loader/.test(rule.selectorText)) {
+              rules.push({ selector: rule.selectorText, color: rule.style.color, opacity: rule.style.opacity });
+            }
+          }
+        } catch (e) { /* cross-origin */ }
+      }
+      console.log('Matching CSS rules:', rules);
+
+      // Check for any filter, mix-blend, or compositing trickery
+      console.log('.pre-loader filter:', cs1.filter);
+      console.log('.pre-loader mixBlendMode:', cs1.mixBlendMode);
+      console.log('#pre-loader-pct filter:', cs2.filter);
+      console.log('#pre-loader-pct mixBlendMode:', cs2.mixBlendMode);
+      console.groupEnd();
+    }
+
     const MIN_LOAD_MS = 350;
     const t0 = performance.now();
     return new Promise(resolve => {
@@ -1118,6 +1186,14 @@ class WheelSlider {
 
   // Snapshot of per-frame data the transition module needs.
   getFrameState() { return buildFrameState(); }
+
+  // Keep the viewfinder CSS size in lockstep with the current stripWidth so
+  // the brackets always hug the image exactly (stripWidth changes on resize
+  // via responsiveStripParams). Written as a vw value so it scales fluidly.
+  _syncViewfinderSize() {
+    const vfSize = `${(params.stripWidth * 100).toFixed(2)}vw`;
+    document.documentElement.style.setProperty('--vf-size', vfSize);
+  }
 
   // Title swap: instant — stays readable during fast scroll, no overlap artifacts.
   // Structured as .line-wrap > .line per line so spine/slate layouts can collapse
@@ -1154,6 +1230,15 @@ class WheelSlider {
     if (this.techApEl)  this.techApEl.textContent  = t.ap;
     if (this.techShEl)  this.techShEl.innerHTML    = `${t.sh}<i>s</i>`;
     if (this.techEvEl)  this.techEvEl.textContent  = `EV ${t.ev}`;
+
+    // Pulse the viewfinder — quick scale dip so the lock-on to the new
+    // centered frame reads kinetically. Remove + reflow + add so the
+    // animation restarts even on rapid frame changes.
+    if (this.viewfinderEl) {
+      this.viewfinderEl.classList.remove('pulse');
+      void this.viewfinderEl.offsetWidth;
+      this.viewfinderEl.classList.add('pulse');
+    }
   }
 
   // ── Instrument panel: build static radar scaffold (grids + axes + labels). ──
