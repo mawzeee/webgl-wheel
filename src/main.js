@@ -130,7 +130,7 @@ const params = {
   bendSensitivity: 2,
   bendSmoothing: 0.04,
   scrollSpeed: 0.009,
-  scrollSmoothing: 0.11,
+  scrollSmoothing: 0.045,
   snapStrength: 0.048,
   snapThreshold: 0.09,
   filmStrength: 0.85,       // film grade on scroll (slightly pulled back)
@@ -592,13 +592,47 @@ class WheelSlider {
       return py;
     };
 
-    // Wheel: free-scroll — delta goes straight to target, loop lerps.
+    // Wheel: predictive-integer scrolling.
+    //
+    // scrollTarget is ALWAYS an integer, computed on every wheel event from
+    // the accumulated flick magnitude. Never fractional. Result: from the
+    // first wheel tick, scroll is already aimed at the frame the user will
+    // land on — the existing 11% lerp carries it there as one continuous
+    // deceleration. No post-input snap, no pause, no separate motion.
+    //
+    // Each "flick session" (wheel activity without a >180ms gap) anchors to
+    // a base frame at start. Subsequent wheel events add to accumulator;
+    // scrollTarget = baseFrame + round(accum × 2). A single typical wheel
+    // tick (deltaY≈100) produces accum≈0.45 → +1 frame. Multiple rapid
+    // ticks compound → +2, +3, etc.
+    //
+    // When the flick pauses (gap > 180ms) the base resets to wherever scroll
+    // is now, so subsequent wheels accumulate fresh.
+    this._wheelAccum = 0;
+    this._wheelLastTime = 0;
+    this._flickBaseFrame = 0;
     window.addEventListener('wheel', e => {
       if (this.introActive || this.peekOpen) return;
       this.audio.start();
+
+      const now = performance.now();
+      const gap = now - this._wheelLastTime;
       const pY = normalizeWheel(e);
-      this.scrollTarget += pY * 0.0045;
-      this.lastInputTime = performance.now();
+      const delta = pY * 0.0045;
+
+      if (gap > 180) {
+        // New flick session — re-anchor to current position
+        this._flickBaseFrame = Math.round(this.scroll);
+        this._wheelAccum = 0;
+      }
+      this._wheelAccum += delta;
+      this._wheelLastTime = now;
+      this.lastInputTime = now;
+
+      // Predict landing: base + accumulated flick × gain, rounded to integer.
+      // Multiplier 2 means one wheel tick ≈ 1 frame advance.
+      const predicted = this._flickBaseFrame + this._wheelAccum * 2;
+      this.scrollTarget = Math.round(predicted);
     }, { passive: true });
 
     // ── Pointer drag — free-scroll, fractional target, lerp glides. No snap. ──
@@ -612,10 +646,18 @@ class WheelSlider {
       document.body.style.cursor = 'grabbing';
     };
 
+    // Drag: track fractional position during the drag for visual follow,
+    // and estimate release velocity so the landing prediction respects
+    // momentum (fast flick → lands further than finger stopped).
+    let dragVel = 0;
+
     const moveDrag = (y) => {
       if (!this.dragging) return;
       const dy = lastY - y;
-      this.scrollTarget += dy * 0.0055;
+      const delta = dy * 0.0055;
+      this.scrollTarget += delta;
+      // Exponential moving average of velocity for release prediction
+      dragVel = dragVel * 0.7 + delta * 0.3;
       this.lastInputTime = performance.now();
       lastY = y;
     };
@@ -624,6 +666,11 @@ class WheelSlider {
       if (!this.dragging) return;
       this.dragging = false;
       document.body.style.cursor = '';
+      // Predict landing from current position + release momentum.
+      // Factor 18 empirically chosen so a flick lands a couple frames ahead.
+      const predicted = this.scrollTarget + dragVel * 18;
+      this.scrollTarget = Math.round(predicted);
+      dragVel = 0;
     };
 
     // Distinguish click from drag — threshold tracking
@@ -794,23 +841,12 @@ class WheelSlider {
       this.techPhiEl.textContent = `φ ${phi.toFixed(4)}`;
     }
 
-    // Magnetic snap — CONTINUOUS GLIDE.
-    // No GSAP tween. After 140ms idle, scrollTarget drifts gently toward the
-    // nearest integer each frame (2.5% of remaining delta). The loop's
-    // scrollSmoothing (0.11) then pulls scroll toward that slowly-drifting
-    // target. Two nested exponential decays = long, smooth, airplane-landing
-    // glide. ~1.5s to settle on a single-frame snap, longer on flings.
-    const idleSince = performance.now() - this.lastInputTime;
-    if (!this.dragging && !this.introActive && !this.peekOpen && idleSince > 140) {
-      const nearest = Math.round(this.scrollTarget);
-      const delta = nearest - this.scrollTarget;
-      if (Math.abs(delta) > 0.0005) {
-        this.scrollTarget += delta * 0.025;
-      } else if (Math.abs(nearest - this.scroll) < 0.001) {
-        this.scrollTarget = nearest;
-        this.scroll = nearest;
-      }
-    }
+    // NO magnetic snap loop here anymore. Integer alignment now happens
+    // via scrollTarget quantization immediately after input stops (see
+    // wheel + drag handlers in listen()). The loop's existing 11% lerp
+    // then carries scroll into that already-integer target as part of
+    // the SAME motion the user started — no separate "snap" animation,
+    // no perceptible pause, no mid-motion curve hand-off.
 
     this.renderer.render(this.scene, this.camera);
   }
