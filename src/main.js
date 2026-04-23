@@ -130,7 +130,7 @@ const params = {
   bendSensitivity: 2,
   bendSmoothing: 0.04,
   scrollSpeed: 0.009,
-  scrollSmoothing: 0.045,
+  scrollSmoothing: 0.051,
   snapStrength: 0.048,
   snapThreshold: 0.09,
   filmStrength: 0.85,       // film grade on scroll (slightly pulled back)
@@ -592,47 +592,27 @@ class WheelSlider {
       return py;
     };
 
-    // Wheel: predictive-integer scrolling.
-    //
-    // scrollTarget is ALWAYS an integer, computed on every wheel event from
-    // the accumulated flick magnitude. Never fractional. Result: from the
-    // first wheel tick, scroll is already aimed at the frame the user will
-    // land on — the existing 11% lerp carries it there as one continuous
-    // deceleration. No post-input snap, no pause, no separate motion.
-    //
-    // Each "flick session" (wheel activity without a >180ms gap) anchors to
-    // a base frame at start. Subsequent wheel events add to accumulator;
-    // scrollTarget = baseFrame + round(accum × 2). A single typical wheel
-    // tick (deltaY≈100) produces accum≈0.45 → +1 frame. Multiple rapid
-    // ticks compound → +2, +3, etc.
-    //
-    // When the flick pauses (gap > 180ms) the base resets to wherever scroll
-    // is now, so subsequent wheels accumulate fresh.
-    this._wheelAccum = 0;
+    // Wheel: free fractional flow + velocity tracking for predictive landing.
+    // scrollTarget grows as the user scrolls; _wheelVel tracks the rate of
+    // that growth (scroll units per ms). The loop combines the two to
+    // predict the integer the motion would naturally settle on, and a weak
+    // magnet pulls toward that prediction — so hard flicks land far ahead
+    // and soft scrolls land on the nearest frame. All continuous, no snap.
+    this._wheelVel = 0;
     this._wheelLastTime = 0;
-    this._flickBaseFrame = 0;
     window.addEventListener('wheel', e => {
       if (this.introActive || this.peekOpen) return;
       this.audio.start();
-
       const now = performance.now();
-      const gap = now - this._wheelLastTime;
-      const pY = normalizeWheel(e);
-      const delta = pY * 0.0045;
-
-      if (gap > 180) {
-        // New flick session — re-anchor to current position
-        this._flickBaseFrame = Math.round(this.scroll);
-        this._wheelAccum = 0;
-      }
-      this._wheelAccum += delta;
+      const dt = Math.max(now - this._wheelLastTime, 8);
       this._wheelLastTime = now;
+      const pY = normalizeWheel(e);
+      const delta = pY * 0.003;
+      this.scrollTarget += delta;
+      // Velocity in scroll-units per ms, quick EMA so fresh events dominate.
+      const instVel = delta / dt;
+      this._wheelVel = this._wheelVel * 0.5 + instVel * 0.5;
       this.lastInputTime = now;
-
-      // Predict landing: base + accumulated flick × gain, rounded to integer.
-      // Multiplier 2 means one wheel tick ≈ 1 frame advance.
-      const predicted = this._flickBaseFrame + this._wheelAccum * 2;
-      this.scrollTarget = Math.round(predicted);
     }, { passive: true });
 
     // ── Pointer drag — free-scroll, fractional target, lerp glides. No snap. ──
@@ -646,18 +626,13 @@ class WheelSlider {
       document.body.style.cursor = 'grabbing';
     };
 
-    // Drag: track fractional position during the drag for visual follow,
-    // and estimate release velocity so the landing prediction respects
-    // momentum (fast flick → lands further than finger stopped).
-    let dragVel = 0;
-
+    // Drag: fractional during drag, free-flows on release. The continuous
+    // magnet in the loop pulls scrollTarget to the nearest integer once
+    // the motion decays — no release-snap, no discrete commit.
     const moveDrag = (y) => {
       if (!this.dragging) return;
       const dy = lastY - y;
-      const delta = dy * 0.0055;
-      this.scrollTarget += delta;
-      // Exponential moving average of velocity for release prediction
-      dragVel = dragVel * 0.7 + delta * 0.3;
+      this.scrollTarget += dy * 0.0055;
       this.lastInputTime = performance.now();
       lastY = y;
     };
@@ -666,11 +641,6 @@ class WheelSlider {
       if (!this.dragging) return;
       this.dragging = false;
       document.body.style.cursor = '';
-      // Predict landing from current position + release momentum.
-      // Factor 18 empirically chosen so a flick lands a couple frames ahead.
-      const predicted = this.scrollTarget + dragVel * 18;
-      this.scrollTarget = Math.round(predicted);
-      dragVel = 0;
     };
 
     // Distinguish click from drag — threshold tracking
@@ -841,12 +811,24 @@ class WheelSlider {
       this.techPhiEl.textContent = `φ ${phi.toFixed(4)}`;
     }
 
-    // NO magnetic snap loop here anymore. Integer alignment now happens
-    // via scrollTarget quantization immediately after input stops (see
-    // wheel + drag handlers in listen()). The loop's existing 11% lerp
-    // then carries scroll into that already-integer target as part of
-    // the SAME motion the user started — no separate "snap" animation,
-    // no perceptible pause, no mid-motion curve hand-off.
+    // Predictive magnet — target integer is velocity-aware.
+    //   predicted = scrollTarget + wheelVel × 400ms
+    //   (approx distance scroll would travel with current velocity decaying)
+    // Hard flicks → velocity high → predicted lands far ahead.
+    // Idle → velocity ~0 → predicted collapses to nearest integer.
+    // scrollTarget eases toward that prediction at 2% per frame — weak
+    // enough that active scrolling dominates, strong enough to carry the
+    // landing once input stops. Wheel velocity decays when no recent input.
+    const sinceInput = performance.now() - this.lastInputTime;
+    if (sinceInput > 50) {
+      this._wheelVel = (this._wheelVel || 0) * 0.88;
+      if (Math.abs(this._wheelVel) < 0.00001) this._wheelVel = 0;
+    }
+    if (!this.dragging && !this.introActive && !this.peekOpen) {
+      const predicted = this.scrollTarget + (this._wheelVel || 0) * 400;
+      const target = Math.round(predicted);
+      this.scrollTarget += (target - this.scrollTarget) * 0.02;
+    }
 
     this.renderer.render(this.scene, this.camera);
   }
