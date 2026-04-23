@@ -290,7 +290,15 @@ void main() {
 
   float bw = uBorderW;
   if (vUv.x < bw || vUv.x > 1.0 - bw) {
-    vec3 base = vec3(0.04) + (hash(floor(vUv * 300.0)) - 0.5) * 0.01;
+    // Warm film-base — real negative stock has a slight magenta/brown cast,
+    // not neutral gray. Lifted above the page bg-dark (#141414 ≈ 0.078) so
+    // the strip reads clearly against the dark cinema background.
+    vec3 base = vec3(0.125, 0.108, 0.115);
+    // Emulsion noise — very subtle, directional (horizontal streaks mimic
+    // film grain on the unexposed base).
+    float emul = hash(vec2(vUv.x * 120.0, floor(vUv.y * 900.0))) - 0.5;
+    base += emul * 0.018;
+
     float bs = (1.0 - vUv.y) * numSlots
       + uProgress * (vUv.x < 0.5 ? 1.12 : 0.88) - numSlots * 0.5 + 0.5;
     float hs = 1.0 / uSprockets;
@@ -299,16 +307,37 @@ void main() {
     float nx = (vUv.x-bc)/(bw*0.42);
     float ca = bw/(hs*uSlotH);
     vec2 hp = vec2(nx, (dy/hs)*2.0/max(ca,0.1));
-    float hole = 1.0-smoothstep(-0.06,0.06,sdRoundBox(hp,vec2(0.52,0.45),0.2));
-    float mdy = mod(bs,hs)-hs*0.5;
-    vec2 mp = vec2(nx,(mdy/hs)*2.0/max(ca,0.1));
-    float cross = max(step(abs(mp.x),0.07)*step(abs(mp.y),0.22),
-                      step(abs(mp.x),0.22)*step(abs(mp.y),0.07));
-    vec3 col = mix(base,vec3(0.15,0.35,0.12),cross*0.7);
-    col = col*cylShade + grain - uGrain*0.5;
-    gl_FragColor = vec4(col, alpha*(1.0-hole));
+
+    // Pixel-accurate AA on the sprocket hole edge via fwidth — replaces the
+    // hard smoothstep band that was aliasing at small render sizes.
+    float sd = sdRoundBox(hp, vec2(0.52, 0.45), 0.18);
+    float aa = fwidth(sd) * 1.2;
+    float hole = 1.0 - smoothstep(-aa, aa, sd);
+
+    // Inner rim: 1px brighter ring just outside the hole, like light
+    // catching the punched edge of the film.
+    float rim = smoothstep(aa, aa + fwidth(sd) * 2.5, sd) *
+                (1.0 - smoothstep(aa + fwidth(sd) * 2.5, aa + fwidth(sd) * 5.5, sd));
+
+    // Edge-code mark between sprocket holes — softened, monochrome, faint.
+    // Replaces the harsh green step() cross that read as vector-art, not
+    // film. Now a thin horizontal dash like a DX code bar.
+    float mdy = mod(bs, hs) - hs * 0.5;
+    float dashX = smoothstep(0.22, 0.18, abs(nx));
+    float dashY = smoothstep(0.06, 0.03, abs((mdy/hs) * 2.0 / max(ca, 0.1)));
+    float edgeMark = dashX * dashY * 0.35;
+
+    vec3 col = base + vec3(0.08) * edgeMark + vec3(0.09, 0.085, 0.08) * rim * 0.4;
+    col = col * cylShade + grain - uGrain * 0.5;
+    gl_FragColor = vec4(col, alpha * (1.0 - hole));
     return;
   }
+
+  // Thin frame-line hairline separating the image area from the sprocket
+  // border — a detail real 35mm has at the perforation edge. Faint cream.
+  float edgeDist = min(vUv.x - bw, (1.0 - bw) - vUv.x);
+  float edgeAA = fwidth(edgeDist);
+  float frameLine = (1.0 - smoothstep(edgeAA * 0.5, edgeAA * 1.5, edgeDist)) * 0.22;
 
   float u = (vUv.x-bw)/(1.0-2.0*bw);
   float w = mod(scrollV, 25.0);
@@ -349,6 +378,10 @@ void main() {
   float vy = smoothstep(0.0,0.04,lv)*smoothstep(1.0,0.96,lv);
   color.rgb *= mix(1.0, vx*vy, uVignette);
 
+  // Faint cream frame-line at the image/sprocket boundary — reads as the
+  // gelatin edge catching light. One hairline, AA-clean.
+  color.rgb = mix(color.rgb, vec3(0.92, 0.88, 0.78), frameLine);
+
   gl_FragColor = vec4(color.rgb, alpha);
 }
 `;
@@ -384,7 +417,6 @@ class WheelSlider {
   constructor() {
     this.container = document.getElementById('canvas-container');
     this.titleEl = document.getElementById('slide-title');
-    this.bgNumEl = document.getElementById('bg-number');
     this.viewfinderEl = document.getElementById('viewfinder');
     // Instrument panel DOM
     this.instr = {
@@ -842,7 +874,6 @@ class WheelSlider {
     this.introBend = 1.0;
 
     this.swapTitle(TITLES[0]);
-    this.bgNumEl.textContent = '01';
     // Seed the panel with frame 0's signature (instant, no tween) so the
     // reveal shows real data rather than zeros rolling in.
     const s0 = SIGNATURES[0];
@@ -948,7 +979,6 @@ class WheelSlider {
     }, 'hero+=0.1');
 
     // Chrome reveals on the wheel's deceleration tail — gentle staircase
-    tl.to('#bg-number',     { opacity: 0.28, duration: 0.6, ease: 'power2.out' }, 'hero+=0.4');
     tl.to('.navbar',        { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
     // counter is inside navbar now — revealed together
     tl.to('.slide-info, .frame__meta, .hero-tech', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
@@ -1224,8 +1254,6 @@ class WheelSlider {
     this.titleEl.innerHTML = structured;
   }
 
-
-
   checkFrame() {
     // Match the fragment shader's centered-frame formula exactly:
     //   at vUv.y=0.5, scrollV = scroll + 0.5 → floor gives the centered cell
@@ -1238,7 +1266,6 @@ class WheelSlider {
     const num = String(f + 1).padStart(3, '0');
     const total = String(IMAGE_COUNT).padStart(3, '0');
     this.swapTitle(TITLES[f]);
-    this.bgNumEl.textContent = String(f + 1).padStart(2, '0');
     this._updateInstrument(f);
 
     // Hero tech metadata (per-frame EXIF-style annotations)
