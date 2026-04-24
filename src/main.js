@@ -477,6 +477,7 @@ class WheelSlider {
       document.fonts.load('400 400px "Bulevar"').catch(() => {}),
     ]).then(() => {
       this.createStrip();
+      this._createAsciiBg();
       this._createGridPlane();
       this._createTextPlane();
       this._buildRadar();
@@ -502,6 +503,10 @@ class WheelSlider {
     this.renderer.setSize(w, h);
     // Cap DPR lower on small phones for performance
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, window.innerWidth <= 480 ? 1.5 : 2));
+    // Explicit z-index above the ASCII backdrop canvas so the film strip
+    // always renders on top of the telemetry rail.
+    this.renderer.domElement.style.position = 'relative';
+    this.renderer.domElement.style.zIndex = '1';
     this.container.appendChild(this.renderer.domElement);
   }
 
@@ -569,6 +574,37 @@ class WheelSlider {
     this.atlas.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
 
     this.images = bitmaps;
+
+    // Precompute a vibrant dominant color per frame, used as the tint for
+    // the ASCII backdrop so each frame has its own signature palette
+    // (blue for the night-Paris frame, red for the rollercoaster, etc.)
+    // without making the image recognizable. Averages each bitmap at 16px
+    // then pushes saturation away from its own luminance for punch.
+    const small = document.createElement('canvas');
+    small.width = 20;
+    small.height = 20;
+    const sctx = small.getContext('2d');
+    this._asciiTints = new Array(IMAGE_COUNT);
+    for (let i = 0; i < IMAGE_COUNT; i++) {
+      const bm = bitmaps[i];
+      if (!bm) { this._asciiTints[i] = new THREE.Vector3(0.6, 0.55, 0.5); continue; }
+      sctx.clearRect(0, 0, 20, 20);
+      sctx.drawImage(bm, 0, 0, 20, 20);
+      const data = sctx.getImageData(0, 0, 20, 20).data;
+      let r = 0, g = 0, b = 0;
+      const pixels = data.length / 4;
+      for (let p = 0; p < data.length; p += 4) {
+        r += data[p]; g += data[p + 1]; b += data[p + 2];
+      }
+      r /= pixels; g /= pixels; b /= pixels;
+      // Push chroma away from luminance gray for vibrancy.
+      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const boost = 1.85;
+      r = Math.max(0, Math.min(255, lum + (r - lum) * boost));
+      g = Math.max(0, Math.min(255, lum + (g - lum) * boost));
+      b = Math.max(0, Math.min(255, lum + (b - lum) * boost));
+      this._asciiTints[i] = new THREE.Vector3(r / 255, g / 255, b / 255);
+    }
   }
 
   createStrip() {
@@ -639,7 +675,7 @@ class WheelSlider {
       const dt = Math.max(now - this._wheelLastTime, 8);
       this._wheelLastTime = now;
       const pY = normalizeWheel(e);
-      const delta = pY * 0.003;
+      const delta = pY * 0.00225;
       this.scrollTarget += delta;
       // Velocity in scroll-units per ms, quick EMA so fresh events dominate.
       const instVel = delta / dt;
@@ -763,6 +799,16 @@ class WheelSlider {
         this.gridMesh.geometry = new THREE.PlaneGeometry(visW, visH);
         this.gridMaterial.uniforms.uResolution.value.set(w, h);
       }
+      // Resize the ASCII image plane
+      if (this.asciiMesh) {
+        const z = -2.5;
+        const dist = CAMERA_Z - z;
+        const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+        const visW = visH * this.camera.aspect;
+        this.asciiMesh.geometry.dispose();
+        this.asciiMesh.geometry = new THREE.PlaneGeometry(visW, visH);
+        this.asciiMaterial.uniforms.uResolution.value.set(w, h);
+      }
     };
     window.addEventListener('resize', onResize);
     // iOS URL-bar show/hide fires visualViewport resize but not window resize
@@ -833,8 +879,118 @@ class WheelSlider {
     if (this.gridMaterial) {
       this.gridMaterial.uniforms.uTime.value = u.uTime.value;
     }
+    if (this.asciiMaterial) {
+      const u2 = this.asciiMaterial.uniforms;
+      u2.uScroll.value = this.scroll;
+      u2.uTime.value = u.uTime.value;
+
+      // Velocity signal — smoothed scroll-delta magnitude used to drive
+      // the grain storm, shimmer amplitude, and multi-exposure smear.
+      const asciiDelta = Math.abs(this.scroll - (this._asciiPrevScroll ?? this.scroll));
+      this._asciiPrevScroll = this.scroll;
+      this._asciiVel = (this._asciiVel || 0) * 0.82 + asciiDelta * 0.18;
+      const velNorm = Math.min(this._asciiVel * 42, 1);
+      u2.uVelocity.value = velNorm;
+
+      // Shutter flash — reuses the main strip's shutterFlash so both
+      // layers flash on the exact same beat, punctuating frame landings
+      // as a single rig firing.
+      u2.uShutter.value = this.shutterFlash || 0;
+
+      // Multi-exposure smear: tint is a Gaussian-weighted blend of the
+      // 5 neighbor editions around the current scroll, spread widened
+      // by velocity. At rest (vel≈0) the blend collapses to a single
+      // continuous interpolation between the two adjacent frames. At
+      // speed the tint is a smeared average — photographic long-exposure
+      // across editions.
+      if (this._asciiTints) {
+        const N = IMAGE_COUNT;
+        const sMod = ((this.scroll % N) + N) % N;
+        const tintAt = (s) => {
+          const m = ((s % N) + N) % N;
+          const a = Math.floor(m);
+          const b = (a + 1) % N;
+          const t = m - a;
+          const ta = this._asciiTints[a];
+          const tb = this._asciiTints[b];
+          return [
+            ta.x * (1 - t) + tb.x * t,
+            ta.y * (1 - t) + tb.y * t,
+            ta.z * (1 - t) + tb.z * t,
+          ];
+        };
+
+        const base = tintAt(sMod);
+        // Secondary storm palette (uYellow / uWhite) is fixed at material
+        // creation — no per-frame update. Consistent across all scrolling.
+        if (velNorm < 0.08) {
+          u2.uTint.value.set(base[0], base[1], base[2]);
+        } else {
+          const spread = 0.25 + velNorm * 2.2;
+          let rr = 0, gg = 0, bb = 0, tw = 0;
+          for (let k = -2; k <= 2; k++) {
+            const w = Math.exp(-(k * k) / (spread * spread));
+            const t = tintAt(sMod + k);
+            rr += t[0] * w; gg += t[1] * w; bb += t[2] * w;
+            tw += w;
+          }
+          rr /= tw; gg /= tw; bb /= tw;
+          const bend = velNorm;
+          u2.uTint.value.set(
+            base[0] * (1 - bend) + rr * bend,
+            base[1] * (1 - bend) + gg * bend,
+            base[2] * (1 - bend) + bb * bend,
+          );
+        }
+      }
+    }
 
     this.checkFrame();
+
+    // Viewfinder: acquisition-rig behavior. Brackets stay fixed size — no
+    // extending arms. During motion a thin horizontal scanline sweeps
+    // top-to-bottom through the frame (CRT/radar-scan aesthetic), speed
+    // tied to scroll velocity. The whole rig drifts softly in the scroll
+    // direction like a gimbal, and on integer landings emits a tight
+    // contraction kick. At rest: clean, frozen brackets. During scroll:
+    // a machine actively scanning.
+    if (this.viewfinderEl) {
+      const vfSigned = this.scroll - (this._vfPrevScroll ?? this.scroll);
+      this._vfPrevScroll = this.scroll;
+      const vfAbs = Math.abs(vfSigned);
+      this._vfVel = (this._vfVel || 0) * 0.84 + vfAbs * 0.16;
+      this._vfSigned = (this._vfSigned || 0) * 0.78 + vfSigned * 0.22;
+      this._vfLockBeat = (this._vfLockBeat || 0) * 0.72;
+
+      const motion = Math.min(this._vfVel * 48, 1);
+      const beat   = this._vfLockBeat;
+      const dir    = Math.max(Math.min(this._vfSigned * 60, 1), -1);
+
+      // Scanline phase: advances proportional to motion. At rest the phase
+      // stops, scanline fades out via opacity so it literally disappears.
+      this._vfScanPhase = ((this._vfScanPhase || 0) + motion * 0.035) % 1;
+      const scanY  = (this._vfScanPhase * 100).toFixed(2);
+      const scanOp = Math.min(motion * 1.6, 1);
+
+      // Shape mode switch — L brackets → + crosshairs once motion crosses
+      // a threshold. Hysteresis so the switch doesn't chatter on a single
+      // frame that happens to cross the boundary.
+      const crossTarget = motion > (this._vfCross > 0.5 ? 0.38 : 0.52) ? 1 : 0;
+      this._vfCross = crossTarget;
+
+      // Gimbal drift + subtle scale hint + lock contraction beat.
+      const dy = dir * 12;
+      const sx = 1 - beat * 0.01;
+      const sy = 1 + beat * 0.018;
+      const op = 1 - motion * 0.22;
+
+      this.viewfinderEl.style.transform =
+        `translate(-50%, calc(-50% + ${dy.toFixed(2)}px)) scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
+      this.viewfinderEl.style.setProperty('--vf-scan-y', `${scanY}%`);
+      this.viewfinderEl.style.setProperty('--vf-scan-opacity', scanOp.toFixed(3));
+      this.viewfinderEl.style.setProperty('--vf-motion-opacity', op.toFixed(3));
+      this.viewfinderEl.style.setProperty('--vf-cross', this._vfCross);
+    }
 
     // Live scroll readout — φ updates every frame for a continuously-changing
     // mathematical coordinate that plays against the instant title swap.
@@ -996,15 +1152,194 @@ class WheelSlider {
         ease: 'power2.out',
       }, 'hero+=0.3');
     }
+    // ASCII image backdrop fades in — a colored ghost of the reel rendered
+    // as ASCII glyphs, living behind everything.
+    if (this.asciiMaterial) {
+      tl.to(this.asciiMaterial.uniforms.uActive, {
+        value: 1,
+        duration: 1.2,
+        ease: 'power2.out',
+      }, 'hero+=0.35');
+    }
     // .nav-buttons removed — drag + keyboard + click are enough to navigate
   }
 
   // ── Iris mechanism: a full-viewport plane behind everything that draws
   //    an 8-blade aperture diaphragm rotating one revolution per ~60
-  //    seconds with a subtle breathing pulse. Mass of the blades reads as
-  //    a soft dark frame in the viewport corners; a hairline edge traces
-  //    the polygon boundary itself. No cursor reaction — the rotation
-  //    itself is the life. Photographic, schematic, WebGL-native.
+  // ── ASCII image shader: the current frame's atlas image is rendered as
+  //    colored ASCII art filling the background. Each cell samples the
+  //    image at its center, picks a glyph from a density ramp (' '→'@')
+  //    based on luminance, and colors it with the image's actual pixel
+  //    color. Fills the black negative space around the cylinder with a
+  //    living, colored ghost of the reel. Advances with scroll. ──
+  _createAsciiBg() {
+    // Build a character atlas — 10 glyphs in increasing density order.
+    const CHARS = ' .:-=+*#%@';
+    const GLYPH = 48;
+    const charCanvas = document.createElement('canvas');
+    charCanvas.width = GLYPH * CHARS.length;
+    charCanvas.height = GLYPH;
+    const cctx = charCanvas.getContext('2d');
+    cctx.fillStyle = '#ffffff';
+    cctx.font = `700 ${Math.floor(GLYPH * 0.78)}px "Space Mono", ui-monospace, monospace`;
+    cctx.textBaseline = 'middle';
+    cctx.textAlign = 'center';
+    for (let i = 0; i < CHARS.length; i++) {
+      cctx.fillText(CHARS[i], i * GLYPH + GLYPH / 2, GLYPH / 2 + GLYPH * 0.02);
+    }
+    this.charAtlas = new THREE.CanvasTexture(charCanvas);
+    this.charAtlas.minFilter = THREE.LinearFilter;
+    this.charAtlas.magFilter = THREE.LinearFilter;
+    this.charAtlas.generateMipmaps = false;
+
+    this.asciiMaterial = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      uniforms: {
+        uAtlas:      { value: this.atlas },
+        uCharAtlas:  { value: this.charAtlas },
+        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        uScroll:     { value: 0 },
+        uActive:     { value: 0 },
+        uCellSize:   { value: 14 },
+        uNumChars:   { value: CHARS.length },
+        uTime:       { value: 0 },
+        uTint:       { value: new THREE.Vector3(0.7, 0.7, 0.8) },
+        // Fixed MAWZE chromatic-storm palette — warm film yellow + cream
+        // white. Always the same, regardless of which edition you're on.
+        // The yellow tonally rhymes with the cream text / film-base color
+        // elsewhere on the page, so the storm reads as "the rig speaking"
+        // rather than arbitrary decoration. Tamed down so peak-velocity
+        // doesn't blow out the composition.
+        uYellow:     { value: new THREE.Vector3(0.72, 0.58, 0.30) },
+        uWhite:      { value: new THREE.Vector3(0.82, 0.78, 0.72) },
+        uVelocity:   { value: 0 },
+        uShutter:    { value: 0 },
+      },
+      vertexShader: /* glsl */`
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */`
+        precision highp float;
+        uniform sampler2D uAtlas;
+        uniform sampler2D uCharAtlas;
+        uniform vec2 uResolution;
+        uniform float uScroll;
+        uniform float uActive;
+        uniform float uCellSize;
+        uniform float uNumChars;
+        uniform float uTime;
+        uniform vec3 uTint;
+        uniform vec3 uYellow;
+        uniform vec3 uWhite;
+        uniform float uVelocity;
+        uniform float uShutter;
+        varying vec2 vUv;
+
+        #define COLS 5.0
+        #define ROWS 5.0
+        #define N 25.0
+
+        float hash12(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+
+        void main() {
+          // Cell layout on screen.
+          vec2 px = vUv * uResolution;
+          vec2 cellIdx = floor(px / uCellSize);
+          vec2 cellCenterPx = (cellIdx + 0.5) * uCellSize;
+          vec2 imgUV = cellCenterPx / uResolution;
+
+          float sMod = mod(uScroll, N);
+          if (sMod < 0.0) sMod += N;
+          float fA = floor(sMod);
+          float fB = mod(fA + 1.0, N);
+          float mixT = fract(sMod);
+
+          float aCol = mod(fA, COLS), aRow = floor(fA / COLS);
+          float bCol = mod(fB, COLS), bRow = floor(fB / COLS);
+          vec2 uvA = vec2((aCol + imgUV.x) / COLS, (aRow + (1.0 - imgUV.y)) / ROWS);
+          vec2 uvB = vec2((bCol + imgUV.x) / COLS, (bRow + (1.0 - imgUV.y)) / ROWS);
+          vec4 cA = texture2D(uAtlas, uvA);
+          vec4 cB = texture2D(uAtlas, uvB);
+          vec4 imgColor = mix(cA, cB, mixT);
+
+          float lum = dot(imgColor.rgb, vec3(0.299, 0.587, 0.114));
+          lum = pow(lum, 0.78);
+
+          // ── IDLE + VELOCITY-REACTIVE ANIMATION ───────────────────────
+          float phase = hash12(cellIdx) * 6.2831;
+          float shimAmp = 0.032 + uVelocity * 0.09;
+          float shimFreq = 1.1 + uVelocity * 2.4;
+          float shimmer = sin(uTime * shimFreq + phase) * shimAmp;
+          float grainPulse = (hash12(cellIdx + fract(uTime * 3.1)) - 0.5) * uVelocity * 0.18;
+          float scanPos = fract(uTime * (0.08 + uVelocity * 0.35));
+          float scan = exp(-pow((vUv.y - (1.0 - scanPos)) * 5.8, 2.0)) * (0.1 + uVelocity * 0.1);
+          lum = clamp(lum + shimmer + scan + grainPulse, 0.0, 1.0);
+
+          float charIdx = floor(lum * (uNumChars - 0.001));
+
+          // Sample glyph atlas at cell-local UV.
+          vec2 localUV = fract(px / uCellSize);
+          vec2 charUV = vec2((charIdx + localUV.x) / uNumChars, localUV.y);
+          float glyph = texture2D(uCharAtlas, charUV).r;
+
+          // ── DUOTONE + CHROMATIC STORM ────────────────────────────────
+          // At rest: each cell renders in the current edition's dominant
+          // tint. During scroll: cells dither into a hard-split yellow /
+          // cream palette (constant across all editions so the storm
+          // always reads the same). Mix capped so the frame tint keeps
+          // presence even at peak velocity — never fully dominated.
+          float cellHash = hash12(cellIdx * 0.73 + 11.3);
+          vec3 stormTint = mix(uYellow, uWhite, step(0.5, cellHash));
+          float stormMix = clamp(uVelocity, 0.0, 1.0) * 0.55;
+          vec3 cellTint  = mix(uTint, stormTint, stormMix);
+
+          vec3 shadow    = cellTint * 0.08;
+          vec3 highlight = mix(cellTint, vec3(1.0), 0.14);
+          vec3 rgb = mix(shadow, highlight, lum);
+
+          // ── SHUTTER FLASH ───────────────────────────────────────────
+          // Fires with the main strip's shutter — same uniform value, so
+          // foreground and background flash together on each frame land.
+          float shutter = uShutter;
+          rgb += vec3(1.0, 0.94, 0.84) * shutter * 0.4;
+
+          // Overall alpha eases down during motion so the storm never
+          // shouts louder than the rest state — fast-scroll the grid
+          // fades slightly, settle brings it back. Shutter adds a small
+          // bloom kick that decays with the shutter itself.
+          float motionFade = 1.0 - uVelocity * 0.4;
+          float alpha = glyph * uActive * 0.26 * motionFade * (1.0 + shutter * 0.15);
+
+          gl_FragColor = vec4(rgb, alpha);
+        }
+      `,
+    });
+
+    // Full-viewport plane behind every other background layer.
+    const z = -2.5;
+    const dist = CAMERA_Z - z;
+    const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    const visW = visH * this.camera.aspect;
+
+    this.asciiMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(visW, visH),
+      this.asciiMaterial
+    );
+    this.asciiMesh.position.z = z;
+    this.asciiMesh.renderOrder = -7;
+    this.scene.add(this.asciiMesh);
+  }
+
+  // ── Graph-paper dot lattice plane behind the cylinder — a photographic
+  //    inspection surface. Static dots at ultra-low alpha, WebGL-native. ──
   _createGridPlane() {
     this.gridMaterial = new THREE.ShaderMaterial({
       transparent: true,
@@ -1276,14 +1611,11 @@ class WheelSlider {
     if (this.techShEl)  this.techShEl.innerHTML    = `${t.sh}<i>s</i>`;
     if (this.techEvEl)  this.techEvEl.textContent  = `EV ${t.ev}`;
 
-    // Pulse the viewfinder — quick scale dip so the lock-on to the new
-    // centered frame reads kinetically. Remove + reflow + add so the
-    // animation restarts even on rapid frame changes.
-    if (this.viewfinderEl) {
-      this.viewfinderEl.classList.remove('pulse');
-      void this.viewfinderEl.offsetWidth;
-      this.viewfinderEl.classList.add('pulse');
-    }
+    // Frame-lock beat — a small velocity spike that the continuous
+    // viewfinder animation picks up, giving a subtle snap on every
+    // integer landing without the instant CSS pulse fighting the
+    // velocity-driven transform.
+    this._vfLockBeat = 1;
   }
 
   // ── Instrument panel: build static radar scaffold (grids + axes + labels). ──

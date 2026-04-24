@@ -107,27 +107,85 @@ body.daylight .slide-title        { color: var(--ink); }
   will-change: transform;
 }
 
+/* Acquisition scanline — thin horizontal line sweeping through the
+   viewfinder during scroll. Driven by --vf-scan-y (0–100%) and
+   --vf-scan-opacity (0–1). Invisible at rest. */
+.viewfinder::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--vf-scan-y, 0%);
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(239, 230, 214, 0.08) 12%,
+    rgba(239, 230, 214, 0.95) 50%,
+    rgba(239, 230, 214, 0.08) 88%,
+    transparent 100%);
+  opacity: var(--vf-scan-opacity, 0);
+  pointer-events: none;
+  transform: translateY(-0.5px);
+  will-change: top, opacity;
+}
+/* Soft glow underneath the scanline so its trail reads against the image. */
+.viewfinder::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: calc(var(--vf-scan-y, 0%) - 6px);
+  height: 13px;
+  background: radial-gradient(ellipse at center,
+    rgba(239, 230, 214, 0.14) 0%,
+    transparent 70%);
+  opacity: var(--vf-scan-opacity, 0);
+  pointer-events: none;
+  will-change: top, opacity;
+}
+
 .viewfinder__corner {
   position: absolute;
   width: var(--vf-corner);
   height: var(--vf-corner);
+  opacity: var(--vf-motion-opacity, 1);
+  transition: opacity 0.2s linear;
+}
+.viewfinder__corner--tl { top: 0; left: 0; }
+.viewfinder__corner--tr { top: 0; right: 0; }
+.viewfinder__corner--bl { bottom: 0; left: 0; }
+.viewfinder__corner--br { bottom: 0; right: 0; }
+
+/* L bracket — fades out as --vf-cross rises from 0 → 1 (scope switching
+   to acquisition mode at high scroll velocity). Borders are on ::before
+   so the geometry can be cross-faded with ::after (the + mark). */
+.viewfinder__corner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
   border-style: solid;
   border-color: var(--vf-color);
   border-width: 0;
+  opacity: calc(1 - var(--vf-cross, 0));
+  transition: opacity 0.22s ease;
 }
-.viewfinder__corner--tl { top: 0; left: 0;    border-top-width: var(--vf-thick); border-left-width: var(--vf-thick); }
-.viewfinder__corner--tr { top: 0; right: 0;   border-top-width: var(--vf-thick); border-right-width: var(--vf-thick); }
-.viewfinder__corner--bl { bottom: 0; left: 0; border-bottom-width: var(--vf-thick); border-left-width: var(--vf-thick); }
-.viewfinder__corner--br { bottom: 0; right: 0; border-bottom-width: var(--vf-thick); border-right-width: var(--vf-thick); }
+.viewfinder__corner--tl::before { border-top-width: var(--vf-thick);    border-left-width: var(--vf-thick); }
+.viewfinder__corner--tr::before { border-top-width: var(--vf-thick);    border-right-width: var(--vf-thick); }
+.viewfinder__corner--bl::before { border-bottom-width: var(--vf-thick); border-left-width: var(--vf-thick); }
+.viewfinder__corner--br::before { border-bottom-width: var(--vf-thick); border-right-width: var(--vf-thick); }
 
-/* Frame-change pulse — quick scale down/up so the lock-on registers kinetically. */
-.viewfinder.pulse {
-  animation: vf-pulse 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
-}
-@keyframes vf-pulse {
-  0%   { transform: translate(-50%, -50%) scale(0.955); }
-  60%  { transform: translate(-50%, -50%) scale(1.012); }
-  100% { transform: translate(-50%, -50%) scale(1); }
+/* + crosshair — fades in at high velocity. Two thin 1px bars centered
+   in each corner's 24px box, crossing to form a plus. Reads as a
+   tactical/telemetry acquisition marker, distinct from the L bracket. */
+.viewfinder__corner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(var(--vf-color), var(--vf-color)) no-repeat 50% 50% / var(--vf-thick) 100%,
+    linear-gradient(var(--vf-color), var(--vf-color)) no-repeat 50% 50% / 100% var(--vf-thick);
+  opacity: var(--vf-cross, 0);
+  transition: opacity 0.22s ease;
 }
 
 /* Hide viewfinder while on detail route — no longer framing anything. */
