@@ -388,24 +388,66 @@ void main() {
 
 // ── Audio ──
 
+// Web Audio kit: one short projector-tick buffer, retriggered per sprocket
+// tooth. Each trigger spawns a fresh BufferSource so consecutive ticks can
+// overlap freely — at fast scroll they pile up into the "trrrrr" ratchet
+// of a real running projector. Slight pitch + gain jitter per hit avoids
+// the robotic sound of a looping sample.
 class AudioKit {
   constructor() {
-    this.click = new Audio('/audio/projector-click.mp3');
-    this.click.volume = 0.3;
     this.muted = false;
     this.unlocked = false;
+    this.ctx = null;
+    this.tickBuffer = null;
+    this._lastTrigger = 0;
+    this._bufferBytes = this._preload();
+  }
+
+  async _preload() {
+    try {
+      const res = await fetch('/audio/projector-tick.mp3');
+      return await res.arrayBuffer();
+    } catch { return null; }
   }
 
   // Call on first user gesture to satisfy browser autoplay policy.
-  // No looping audio — just clicks.
-  unlock() { this.unlocked = true; }
+  async unlock() {
+    if (this.unlocked) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { console.warn('[audio] no AudioContext support'); return; }
+      this.ctx = new AC();
+      // Some browsers start the context suspended even after a user
+      // gesture. Resume explicitly.
+      if (this.ctx.state === 'suspended') await this.ctx.resume();
+      const bytes = await this._bufferBytes;
+      if (!bytes) { console.warn('[audio] preload returned null'); return; }
+      this.tickBuffer = await this.ctx.decodeAudioData(bytes.slice(0));
+      this.unlocked = true;
+      console.log('[audio] ready · state:', this.ctx.state, '· sr:', this.ctx.sampleRate);
+    } catch (e) {
+      console.warn('[audio] unlock failed', e);
+    }
+  }
 
   start() { this.unlock(); } // alias for existing call sites
 
   snap() {
-    if (!this.unlocked || this.muted) return;
-    this.click.currentTime = 0;
-    this.click.play().catch(() => {});
+    if (!this.unlocked || this.muted || !this.tickBuffer || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    // Rate cap — max ~28 Hz (36 ms between hits). Keeps the ratchet
+    // audible without piling up into a continuous hum at fast scroll.
+    if (now - this._lastTrigger < 0.036) return;
+    this._lastTrigger = now;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.tickBuffer;
+    // Darker playback pitch — real projector motor territory. Mild jitter
+    // keeps the mechanical unevenness without feeling robotic.
+    src.playbackRate.value = 0.70 + Math.random() * 0.14;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.07 + Math.random() * 0.03;
+    src.connect(gain).connect(this.ctx.destination);
+    src.start(now);
   }
 
   setActivity() { /* no-op — no ambient loops */ }
