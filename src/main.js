@@ -478,6 +478,7 @@ class WheelSlider {
     ]).then(() => {
       this.createStrip();
       this._createAsciiBg();
+      this._createBgCircle();
       this._createGridPlane();
       this._createTextPlane();
       this._buildRadar();
@@ -808,6 +809,7 @@ class WheelSlider {
         this.asciiMesh.geometry.dispose();
         this.asciiMesh.geometry = new THREE.PlaneGeometry(visW, visH);
         this.asciiMaterial.uniforms.uResolution.value.set(w, h);
+        this._syncBgCircleRadius();
       }
     };
     window.addEventListener('resize', onResize);
@@ -946,6 +948,7 @@ class WheelSlider {
     }
 
     this.checkFrame();
+    this._updateBgCircle();
 
     // Viewfinder: acquisition-rig behavior. Brackets stay fixed size — no
     // extending arms. During motion a thin horizontal scanline sweeps
@@ -1139,6 +1142,8 @@ class WheelSlider {
     // counter is inside navbar now — revealed together
     tl.to('.slide-info, .frame__meta, .hero-tech', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
     tl.to('.viewfinder', { opacity: 1, duration: 0.45, ease: 'power2.out' }, 'hero+=0.9');
+    tl.to('.bg-circle-wrap', { opacity: 0.85, duration: 1.2, ease: 'power2.out' }, 'hero+=0.5');
+    tl.to('.bg-circle-index', { opacity: 1, duration: 1.0, ease: 'power2.out' }, 'hero+=0.8');
     // Instrument panel fades in on the deceleration tail alongside the rest
     // of the chrome — already pre-seeded with frame 0 so no value roll.
     tl.to('.instrument', { opacity: 1, duration: 0.6, ease: 'power2.out' }, 'hero+=0.75');
@@ -1216,6 +1221,9 @@ class WheelSlider {
         uWhite:      { value: new THREE.Vector3(0.82, 0.78, 0.72) },
         uVelocity:   { value: 0 },
         uShutter:    { value: 0 },
+        // Circle aperture: ASCII backdrop masks to zero alpha inside the
+        // lens ring so the circle reads as a clean viewing porthole.
+        uCircleR:    { value: 0 },
       },
       vertexShader: /* glsl */`
         varying vec2 vUv;
@@ -1239,6 +1247,7 @@ class WheelSlider {
         uniform vec3 uWhite;
         uniform float uVelocity;
         uniform float uShutter;
+        uniform float uCircleR;
         varying vec2 vUv;
 
         #define COLS 5.0
@@ -1318,6 +1327,15 @@ class WheelSlider {
           float motionFade = 1.0 - uVelocity * 0.4;
           float alpha = glyph * uActive * 0.26 * motionFade * (1.0 + shutter * 0.15);
 
+          // Lens aperture mask — ASCII fades to zero inside the circle,
+          // leaving the aperture a clean viewing porthole for the cylinder.
+          // The mask is soft (18px feather) so the edge reads as optical,
+          // not a hard cutout.
+          vec2 cenPx = uResolution * 0.5;
+          float distFromCenter = distance(vUv * uResolution, cenPx);
+          float apertureMask = smoothstep(uCircleR - 28.0, uCircleR + 4.0, distFromCenter);
+          alpha *= apertureMask;
+
           gl_FragColor = vec4(rgb, alpha);
         }
       `,
@@ -1336,6 +1354,94 @@ class WheelSlider {
     this.asciiMesh.position.z = z;
     this.asciiMesh.renderOrder = -7;
     this.scene.add(this.asciiMesh);
+  }
+
+  // ── Lens-aperture circle: generates 25 tick marks (one per edition)
+  //    on the SVG rim, then wires scroll-driven rotation and active-tick
+  //    highlighting in the render loop (via updateBgCircle). Major ticks
+  //    every 5 frames. Rotates so the current frame's tick sits at top. ──
+  _createBgCircle() {
+    this.bgCircleWrap = document.getElementById('bg-circle-wrap');
+    const ticksEl = document.getElementById('bg-circle-ticks');
+    if (!this.bgCircleWrap || !ticksEl) return;
+
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    this.bgCircleTicks = [];
+    for (let i = 0; i < IMAGE_COUNT; i++) {
+      // Start at top (-90° in SVG coords = -PI/2) and go clockwise.
+      const angle = -Math.PI / 2 + (i / IMAGE_COUNT) * Math.PI * 2;
+      const major = i % 5 === 0;
+      const rIn   = major ? 91 : 94;
+      const rOut  = 98;
+      const x1 = Math.cos(angle) * rIn;
+      const y1 = Math.sin(angle) * rIn;
+      const x2 = Math.cos(angle) * rOut;
+      const y2 = Math.sin(angle) * rOut;
+      const line = document.createElementNS(SVG_NS, 'line');
+      line.setAttribute('x1', x1.toFixed(3));
+      line.setAttribute('y1', y1.toFixed(3));
+      line.setAttribute('x2', x2.toFixed(3));
+      line.setAttribute('y2', y2.toFixed(3));
+      if (major) line.classList.add('bg-circle__tick--major');
+      ticksEl.appendChild(line);
+      this.bgCircleTicks.push(line);
+    }
+    this._bgCircleActiveTick = -1;
+    this._syncBgCircleRadius();
+  }
+
+  // Sync the ASCII shader's aperture radius with the CSS circle size.
+  _syncBgCircleRadius() {
+    if (!this.asciiMaterial) return;
+    const minDim = Math.min(window.innerWidth, window.innerHeight);
+    // min(82vh, 82vw) / 2 — matches CSS. Subtract a pixel so the mask
+    // bleeds just under the SVG stroke instead of bleeding through it.
+    const radius = minDim * 0.41 - 1;
+    this.asciiMaterial.uniforms.uCircleR.value = radius;
+  }
+
+  // Per-frame update: rotate the circle so the current frame's tick is
+  // at 12 o'clock, and mark that tick "active" (warm-yellow highlight).
+  _updateBgCircle() {
+    if (!this.bgCircleWrap || !this.bgCircleTicks) return;
+    const N = IMAGE_COUNT;
+    // Smoothly map continuous scroll → rotation. Negative so the circle
+    // rotates against scroll direction — giving the top position its
+    // natural "current frame" anchoring.
+    const rot = -(this.scroll / N) * 360;
+    this.bgCircleWrap.style.transform =
+      `translate(-50%, -50%) rotate(${rot.toFixed(3)}deg)`;
+
+    const cur = ((Math.round(this.scroll) % N) + N) % N;
+    if (cur !== this._bgCircleActiveTick) {
+      if (this._bgCircleActiveTick >= 0) {
+        const prev = this.bgCircleTicks[this._bgCircleActiveTick];
+        prev.classList.remove('bg-circle__tick--active');
+        // Clear any pulse residue so inactive ticks return to base.
+        prev.style.strokeWidth = '';
+        prev.style.filter = '';
+      }
+      this.bgCircleTicks[cur].classList.add('bg-circle__tick--active');
+      this._bgCircleActiveTick = cur;
+    }
+
+    // Shutter pulse on the active tick — fires in lockstep with the
+    // main strip's shutterFlash, so the index blooms alongside the
+    // cylinder on every frame landing. Mutations only when active
+    // (no per-frame writes when shutter is ~zero).
+    const activeTick = this.bgCircleTicks[this._bgCircleActiveTick];
+    const s = this.shutterFlash || 0;
+    if (activeTick) {
+      if (s > 0.02) {
+        activeTick.style.strokeWidth = (0.45 + s * 0.55).toFixed(3);
+        activeTick.style.filter =
+          `drop-shadow(0 0 ${(s * 2.8).toFixed(2)}px rgba(221, 183, 104, 0.95))`;
+      } else if (this._bgTickPulseActive) {
+        activeTick.style.strokeWidth = '';
+        activeTick.style.filter = '';
+      }
+      this._bgTickPulseActive = s > 0.02;
+    }
   }
 
   // ── Graph-paper dot lattice plane behind the cylinder — a photographic
