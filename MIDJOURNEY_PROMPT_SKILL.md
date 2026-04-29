@@ -222,6 +222,57 @@ The skill is essentially this document, parameterized by a brand profile.
 
 A running log of taste rules learned from Karim. Each entry is a durable judgment that should inform every future prompt. Append, don't overwrite.
 
+### Lesson 22 — NO NAMED COPYRIGHTED BRAND IP IN THE FRAME. Describe the silhouette, not the trademark.
+**Observed:** I wrote *"oversized Balenciaga FW25 black technical Defender parka with the BALENCIAGA wordmark printed large across the upper back."* Karim flagged it: *"don't put Balenciaga, we don't have the copyright."* This is a real legal concern — the LoRA is being trained as a commercial product (MAWZE Studio for DTC brands). Training data with copyrighted wordmarks rendered into the frame is liability for the eventual SaaS.
+
+**Rule:** **Garments described in-prompt must be brand-agnostic.** Never request a specific named brand's product or its trademark wordmark/logo to be rendered INTO the image. Describe the silhouette, material, era, and construction generically — let MJ produce a non-trademarked garment that hits the same aesthetic.
+
+**DROP from prompts:**
+- Named brand garments: *"Balenciaga FW25 Defender parka"*, *"Saint Laurent slim turtleneck"*, *"Bottega cassette bag"*
+- Brand wordmark callouts: *"the BALENCIAGA wordmark printed across the back"*, *"the Saint Laurent monogram on the chest"*
+- Named designer/creative director when their name = the brand IP: *"by Demna"*, *"by Vaccarello"* (Vaccarello = current SL creative director — pulls SL trademark)
+
+**KEEP in prompts:**
+- Generic garment language with strong aesthetic specificity: *"oversized black technical mountaineering parka with reinforced shoulder seams, stark stencil wordmark in matte off-white industrial typography across the upper back"*
+- Photographer references that have established their own aesthetic identity independent of any single brand: *Steven Klein, Glen Luchford, Inez & Vinoodh, Tyler Mitchell, Mert & Marcus, Steven Meisel*
+- Era/decade callouts: *"1970s motocross jacket"*, *"1990s technical luxury silhouette"*, *"2020s utilitarian fashion"*
+
+**The wordmark trick:** if a wordmark is required for the product-hero composition (Lesson 21), describe its TYPOGRAPHY and POSITION, never its TEXT. *"a stark stencil wordmark in matte off-white industrial typography across the upper back"* lets MJ generate any non-trademarked text. The LoRA learns "wordmarks on apparel" as a visual element — not a specific brand's IP.
+
+**Apply:** Audit every prompt for named brand IP before submitting. Replace with descriptive equivalents. Reference tail can still name photographers, but never current creative directors of active luxury houses (their names function as brand IP themselves).
+
+### Lesson 21 — THE PRODUCT THE BRAND SELLS IS THE HERO. The apparel — not the prop, not the face — is the lit surface.
+**Observed:** I generated a snowboard-on-moon image (#95) with the model standing static at center frame, snowboard planted vertically in front of him taller than him, light on his face, parka generic and dark across his front. Karim flagged it: *"super boring, super expected, like a kid posing for a shitty skateboard brand. This is what makes the image look AI."* He pointed to the reference (#96) — model **mid-stride walking left to right**, snowboard hanging casually at his side dragging through the moondust, **3/4 back-to-camera**, the wordmark printed large across the back of his jacket caught by the rim light. *"All the lighting is coming on his t-shirt to highlight the brand. This brand is selling a t-shirt and this is the t-shirt's photoshoot. The cinema is on the product."*
+
+**Rule:** The brand is selling APPAREL. The apparel — the garment with the wordmark — is what must be lit, framed, and held by the cinema. The model is a body inside the garment; the prop (snowboard, ball, racket, etc.) is incidental cargo. **Pose, frame, and light the model so the BACK or the CHEST of the garment with the wordmark is the brightest, most clearly-rendered surface in the image.**
+
+**The product test:** before submitting, ask: *"If I cropped out the model's face, would a viewer still know which brand made which garment?"* If yes, ship. If no, reframe.
+
+**Three structural moves that put the apparel first:**
+
+| Move | Why |
+|---|---|
+| **3/4 back-to-camera framing** | The brand wordmark on the back of the jacket / hoodie / coach's coat is fully visible and becomes the focal surface. The face becomes a subordinate gesture (head turned in profile over the shoulder), not the hero. |
+| **Mid-stride or mid-action movement** | Static "model + prop" reads as catalog. A walking gesture in an absurd setting reads as *life happening on the moon* — irony-by-casualness, the joke is "he doesn't think this is weird." Movement also makes the garment fall, drape, and read three-dimensional instead of poster-flat. |
+| **Light raking ACROSS the wordmark from a named source** | The rim or key light must be motivated to land on the surface where the brand lives. *"Cool white rim light raking across the back of his parka from the planet at frame right, illuminating the wordmark stencil"* — the apparel surface is the LIT surface. The face is in shadow or profile. |
+
+**Irony-by-casualness (the conceptual move that fixed the moon shot):**
+The reference works because the model **acts as if nothing is unusual.** He is just walking on the moon, board in hand, deliberate calm gait. The viewer reads: *wait — he's on the moon and he doesn't care?* That dissonance IS the punchline. Static "model posing with prop in absurd setting" tells the viewer: *this is a photoshoot.* Casual movement in absurd setting tells the viewer: *this is his Tuesday.* The second read is what stops the scroll.
+
+**What this DROPS from prior prompts:**
+- Subject standing static facing the camera with prop centered in front of him
+- Light on the face as the hero surface
+- Direct stare into the lens (Demna-coded direct stare is correct for portrait role; wrong for hero-product role)
+- Prop framed taller than subject / vertical at frame center
+
+**What this ADDS to every product-hero prompt:**
+- Explicit framing instruction: *"3/4 from behind, head turned in profile over the shoulder"* or *"walking left-to-right in profile"*
+- Explicit garment description: *"oversized [BRAND] [GARMENT] in [COLOR] with the brand wordmark printed across the upper back in [TYPOGRAPHY DESCRIPTION]"*
+- Explicit light-on-product clause: *"motivated cool white rim light raking across the wordmark on his back from the [NAMED SOURCE] at frame [DIRECTION]"*
+- Casual action verb: *walking, dragging, carrying, leaning, mid-stride* — never *standing, posing, holding*
+
+**Apply:** This is a NEW campaign role to slot into Lesson 6 (campaigns are series). Add **PRODUCT-HERO** alongside hero / mood / detail / environment / b-side. Product-hero rules: apparel is lit surface, model is back-to-camera or in profile, action is casual movement, scene irony comes from setting + casualness collision. Refines Lesson 19 #1 (character with backstory — backstory now includes *what they're doing*, not just *who they are*) and Lesson 19 #8 (source-motivated lighting — source must be motivated to land on the GARMENT specifically).
+
 ### Lesson 20 — Modern cinematic grade is COOL AMBIENT + MOTIVATED WARM. All-warm pulls vintage / sepia / "ancient."
 **Observed:** Multiple loved prompts include "warm cast on cheek and jacket" or "golden haze raking from frame left" or "soft late afternoon light." Karim flagged the result: *"they all have this ancient look. I really don't want that yellow effect on all images. I don't want them to look really old."* The single image with the strongest grade was wreck-and-horse — *"cold teal cast on white car body, warm amber catch on his skin and the suit lapel."* Cool dominant + warm motivated. Every other prompt that just said "warm cast" produced sepia / yellow / vintage golden-hour mush.
 

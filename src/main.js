@@ -886,7 +886,6 @@ class WheelSlider {
     if (currentTooth !== this.lastTooth && !this.introActive && userActive) {
       this.lastTooth = currentTooth;
       this.shutterFlash = 1;
-      this._asciiShutterAge = 0; // reset the resolution-wave timer
       this.audio.snap();
     } else if (currentTooth !== this.lastTooth) {
       // Silent catch-up during momentum decay — no flash, no click
@@ -941,25 +940,13 @@ class WheelSlider {
 
       u2.uShutter.value = this.shutterFlash || 0;
 
-      // ── STORYTELLING: RESOLUTION ARC ─────────────────────────────────
-      //   uResolved tracks how "crystallized" the photograph is in the
-      //   ASCII layer. Velocity collapses it toward chaos (0); stillness
-      //   recovers it toward 1 over ~500ms via a slow lerp. Shutter spikes
-      //   give it a brief boost so frame-lands clarify the field.
-      const resolvedTarget = Math.max(0, 1 - Math.min(velNorm * 1.5, 0.85))
-                           + (this.shutterFlash || 0) * 0.25;
+      // ── Resolution arc — the only animation in this layer.
+      //   Photograph holds at rest; scroll loosens it slightly toward
+      //   chaos (subtle character flicker), stillness recovers it.
+      const resolvedTarget = Math.max(0.45, 1 - Math.min(velNorm * 1.0, 0.55));
       this._asciiResolved = (this._asciiResolved ?? 1)
-                          + (Math.min(resolvedTarget, 1) - (this._asciiResolved ?? 1)) * 0.10;
+                          + (resolvedTarget - (this._asciiResolved ?? 1)) * 0.10;
       u2.uResolved.value = this._asciiResolved;
-
-      // uShutterAge — seconds since the last tooth-click. Drives the
-      // radial resolution wave's growing radius. Reset to 0 in the
-      // tooth-detection block above; here we just integrate dt.
-      const nowS = u.uTime.value;
-      const dt = Math.min(0.05, nowS - (this._asciiPrevTime ?? nowS));
-      this._asciiPrevTime = nowS;
-      this._asciiShutterAge = (this._asciiShutterAge ?? 99) + dt;
-      u2.uShutterAge.value = this._asciiShutterAge;
 
       // Multi-exposure smear: tint is a Gaussian-weighted blend of the
       // 5 neighbor editions around the current scroll, spread widened
@@ -1283,14 +1270,8 @@ class WheelSlider {
         uWhite:      { value: new THREE.Vector3(0.82, 0.78, 0.72) },
         uVelocity:   { value: 0 },
         uShutter:    { value: 0 },
-        // STORYTELLING UNIFORMS
-        // uResolved: 0 = chaos, 1 = photograph fully readable. Decays on
-        // velocity, climbs back on stillness. Lerped slowly in JS so the
-        // arc takes ~500ms to settle.
+        // 0 = chaos, 1 = crystallized photograph. Lerps gently with velocity.
         uResolved:   { value: 1 },
-        // uShutterAge: seconds since the last frame-land (tooth click).
-        // Resets to 0 on each tick. Drives the radial resolution wave.
-        uShutterAge: { value: 99 },
       },
       vertexShader: /* glsl */`
         varying vec2 vUv;
@@ -1315,7 +1296,6 @@ class WheelSlider {
         uniform float uVelocity;
         uniform float uShutter;
         uniform float uResolved;     // 0 = chaos, 1 = photograph crystallized
-        uniform float uShutterAge;   // seconds since last tooth-click
         varying vec2 vUv;
 
         #define COLS ${ATLAS_COLS}.0
@@ -1351,29 +1331,10 @@ class WheelSlider {
           float lum = dot(imgColor.rgb, vec3(0.299, 0.587, 0.114));
           lum = pow(lum, 0.78);
 
-          // ─── RADIAL RESOLUTION WAVE ─────────────────────────────────
-          //   Every tooth-click (frame-land) fires a thin sharp ring of
-          //   resolution that sweeps outward from the viewport center.
-          //   As the wave passes a cell, it forces that cell toward
-          //   "fully resolved" — the cell briefly snaps to its sharp
-          //   luminance glyph + brightens. After the ring passes, the
-          //   cell relaxes back to the ambient resolution level.
-          //
-          //   Aspect-corrected so the wavefront is a true circle on
-          //   any viewport ratio. Wave speed crosses ~0.7 of the
-          //   viewport in 0.7s. Decay over ~1.0s so the ring fades
-          //   cleanly past the edges.
-          float aspect = uResolution.x / uResolution.y;
-          vec2 toCenter = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
-          float distC = length(toCenter);
-          float waveRadius = uShutterAge * 1.05;
-          float waveBand   = exp(-pow((distC - waveRadius) * 9.0, 2.0));
-          float waveDecay  = exp(-uShutterAge * 1.4);
-          float wavePulse  = waveBand * waveDecay;
-
-          // Effective resolution at this fragment: ambient resolved
-          // level lifted by the passing wave.
-          float resolved = clamp(uResolved + wavePulse * 1.2, 0.0, 1.0);
+          // Resolution arc only — no wave, no shape, no shockwave.
+          // The photograph holds at rest; scroll loosens it slightly
+          // toward chaos. That's the entire effect.
+          float resolved = uResolved;
           float chaos = 1.0 - resolved;
 
           // ─── IDLE BREATH + CHAOS-MODULATED ANIMATION ────────────────
@@ -1403,42 +1364,110 @@ class WheelSlider {
           float swapAmount = chaos * 0.65;
           float useChaos = step(1.0 - swapAmount, swapSeed);
           float charIdx = mix(resolvedGlyph, chaosGlyph, useChaos);
-          // Wave snaps cells back to resolved glyph as it passes.
-          charIdx = mix(charIdx, resolvedGlyph, wavePulse);
 
           // Sample glyph atlas at cell-local UV.
           vec2 localUV = fract(px / uCellSize);
           vec2 charUV = vec2((charIdx + localUV.x) / uNumChars, localUV.y);
           float glyph = texture2D(uCharAtlas, charUV).r;
 
-          // ─── COLOR ARC ──────────────────────────────────────────────
-          //   At rest (resolved=1): per-frame tint, full identity.
-          //   In chaos (resolved=0): tint dithers into the storm
-          //   palette (yellow/cream split), low-saturation drift.
-          //   Wave temporarily snaps color back to per-frame tint.
+          // ─── COLOR ──────────────────────────────────────────────────
+          //   Per-frame tint, slight chaos-driven drift toward the
+          //   storm palette. No wave-band brightening, no shutter
+          //   bloom. Just a calm photograph in characters.
           float cellHash = hash12(cellIdx * 0.73 + 11.3);
           vec3 stormTint = mix(uYellow, uWhite, step(0.5, cellHash));
-          float stormMix = chaos * 0.30 * (1.0 - wavePulse);
+          float stormMix = chaos * 0.20;
           vec3 cellTint  = mix(uTint, stormTint, stormMix);
 
           vec3 shadow    = cellTint * 0.10;
           vec3 highlight = mix(cellTint, vec3(1.0), 0.14);
           vec3 rgb = mix(shadow, highlight, lum);
 
-          // ─── WAVE BRIGHTENING ───────────────────────────────────────
-          //   Cells in the wave band brighten — the resolution
-          //   shockwave is visibly luminous as it sweeps outward.
-          rgb += uTint * wavePulse * 0.50;
+          // ─── FILM PASSING — cinematic scale ─────────────────────────
+          //   Big slow stripes of light scrolling upward through the
+          //   ASCII layer. Reads as frames of light passing through the
+          //   projector gate, not a technical scanline pattern. Layered:
+          //
+          //   1. ONLY ~1.4 STRIPES per viewport so each stripe is
+          //      enormous — a deliberate beam, not a comb.
+          //
+          //   2. SLOW DELIBERATE RATE — half the previous speed. Real
+          //      film moves slowly through the gate; the eye should
+          //      track each stripe as it climbs.
+          //
+          //   3. SOFT FALLOFF — wide Gaussian band so stripes bleed
+          //      into each other at the edges. Halation, not hard
+          //      lines.
+          //
+          //   4. DRAMATIC BRIGHTNESS — per-stripe intensity range
+          //      0.10 – 1.00. Some stripes are nearly black (under-
+          //      exposed frames), others glow (light leaks). Real
+          //      cinema lives in this contrast.
+          //
+          //   5. CENTER VIGNETTE — stripes are brightest in the middle
+          //      of the viewport, fade toward top/bottom edges. The
+          //      projector beam is focused; the edges fall to shadow.
+          //
+          //   6. WARM/COOL DRIFT — each stripe shifts the tint slightly
+          //      warmer or cooler. Color temperature variation between
+          //      film stock frames. Subtle, atmospheric.
+          //
+          //   7. GATE WEAVE — mechanical horizontal wobble, kept small.
+          //
+          //   8. RATE BREATH — slow sinusoidal speed variation.
 
-          // Frame-land bloom — small warm lift on top of the wave.
-          rgb += vec3(1.0, 0.94, 0.84) * uShutter * 0.22;
+          float filmGate = smoothstep(0.30, 0.75, uVelocity);
+
+          // Slow rate with breath — half the previous speed.
+          float filmRate = uTime * (0.42 + sin(uTime * 0.23) * 0.06);
+          float stripeF = vUv.y * 1.4 - filmRate;
+          float stripeIdx = floor(stripeF);
+          float filmPos = fract(stripeF);
+
+          // Per-stripe brightness — dramatic range. Some stripes nearly
+          // dark, some glowing.
+          float stripeBright = 0.10 + hash12(vec2(stripeIdx, 11.0)) * 0.90;
+
+          // Per-stripe color temperature drift — warmer or cooler hue
+          // shift. Range −0.20 (cool) to +0.20 (warm) on the R/B axis.
+          float stripeTemp = (hash12(vec2(stripeIdx, 23.0)) - 0.5) * 0.40;
+          vec3 tempShift = vec3(stripeTemp * 0.8, stripeTemp * 0.1, -stripeTemp * 0.7);
+
+          // Small mechanical weave.
+          float weave = sin(stripeIdx * 7.3 + uTime * 4.0) * 0.03;
+          float peak = 0.5 + weave;
+
+          // Wide soft Gaussian — stripes bleed into one another.
+          float filmStripe = exp(-pow((filmPos - peak) * 2.4, 2.0));
+
+          // Center vignette — brightest in the vertical middle of the
+          // viewport, fades toward top/bottom edges.
+          float vignette = 1.0 - smoothstep(0.0, 0.55, abs(vUv.y - 0.5));
+          vignette = pow(vignette, 0.85);
+
+          float filmAmt = filmStripe * filmGate * stripeBright * vignette;
+          // Brightness lift + color temperature drift.
+          rgb += (uTint + tempShift) * filmAmt * 0.55;
+
+          // Halation — the brightest stripes glow softly into neighbors.
+          // A wider, dimmer Gaussian on top of the main stripe carries
+          // the bloom past the stripe's edge.
+          float halation = exp(-pow((filmPos - peak) * 1.1, 2.0));
+          rgb += uTint * halation * filmGate * stripeBright * 0.18 * vignette;
+
+          // Frame line — thin DARK seam where stripes meet. Subtle —
+          // anchors the rhythm.
+          float frameLineDist = min(filmPos, 1.0 - filmPos);
+          float frameLine = exp(-pow(frameLineDist * 60.0, 2.0)) * filmGate * vignette;
+          rgb -= cellTint * frameLine * 0.55;
 
           // ─── ALPHA ──────────────────────────────────────────────────
-          //   Base presence dropped to 0.24 so the layer recedes and
-          //   the photograph leads. The resolution wave still kicks
-          //   alpha sharply so the shockwave reads as a moment of
-          //   clarity, not a uniform field surge.
-          float alpha = glyph * uActive * (0.24 + wavePulse * 0.55 + uShutter * 0.18);
+          //   Quiet at rest. Film stripes lift alpha in their bands —
+          //   the bright frame is visibly more present than the dim
+          //   stripes around it. Halation contributes to neighboring
+          //   alpha so the bloom reads soft, not stamped.
+          float alpha = glyph * uActive *
+                        (0.22 + filmAmt * 0.55 + halation * filmGate * stripeBright * 0.18 * vignette);
 
           gl_FragColor = vec4(rgb, alpha);
         }
