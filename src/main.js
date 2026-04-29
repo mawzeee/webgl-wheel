@@ -5,41 +5,39 @@ import { Pane } from 'tweakpane';
 import { Router, parsePath, framePath } from './router.js';
 import { forwardSplice, reverseSplice, directLoadDetail, simpleReverse } from './transition.js';
 
-const IMAGE_COUNT = 25;
+const IMAGE_COUNT = 22;
 const ATLAS_COLS = 5;
 const ATLAS_ROWS = 5;
 const IMAGE_PATHS = Array.from({ length: IMAGE_COUNT }, (_, i) => `/images/slide-${i + 1}.avif`);
 const FOV = 50;
 const CAMERA_Z = 5;
 
-// Sequenced for contrast — alternating bright/dark, group/solo, chaos/calm
-// Titles per slide — dark-humor editorial
+// Dark-humor editorial titles. The image roster has been replaced; the
+// titles below stay in slot order for now and may not narratively match
+// the new photographs — Karim will rename per-slide as he curates.
 const TITLES = [
-  'Please<br/>Don\'t Vomit',     // slide-1: rollercoaster + cotton candy
-  'Cult<br/>Starter Pack',       // slide-2: red moon, desert, brass bowls
-  'Return<br/>to Sender',        // slide-3: tennis balls flying back at you
-  'Unsubscribed',                // slide-4: samurai at shrine. opted out.
-  'Nobody<br/>Asked',            // slide-5: 3 girls w/ popcorn, main character energy
-  'Last Supper<br/>(Casual)',    // slide-6: pizza under Saturn rings
-  'Read Receipts<br/>Off',       // slide-7: girl solo, palm tree, aloof
-  'Wrong<br/>Platform',          // slide-8: subway platform, alone (dating + transit)
-  'Emotional<br/>Support Donut', // slide-9: blonde w/ donut, retro comfort
-  'Bad<br/>Hand',                // slide-10: moonlit card game
-  'Worth<br/>the Cramps',        // slide-11: couple w/ ice cream, messy, committed
-  'Rent Is<br/>Overdue',         // slide-12: Paris café dusk
-  'Trust Fund<br/>Puppy',        // slide-13: dog reading in bathtub
-  'Stop<br/>Calling',            // slide-14: orange phone, donuts, red eye
-  'Add<br/>to Cart',             // slide-15: shopping cart of tennis balls
-  'They<br/>Bite',               // slide-16: pink Ferrari + dogs
-  'Check Your<br/>Privilege',    // slide-17: chess in fur coat (double meaning)
-  'Post-Wedding<br/>Uber',       // slide-18: pink moon over city, family
-  'Same<br/>Therapist',          // slide-19: two girls, matching energy
-  'My SoundCloud<br/>Era',       // slide-20: DJs w/ fans
-  '9 Lives,<br/>1 Outfit',       // slide-21: cat in red puffer + lollipop
-  'Higher<br/>Ground',           // slide-22: chess on mountain
-  'No One<br/>Tipped',           // slide-23: 4 guys overhead w/ pizza
-  'He Left,<br/>I Kept It',      // slide-24: girl w/ pizza in bed
-  'Still<br/>in Beta',           // slide-25: synth studio, never shipping
+  'Slow<br/>Burn',               // slide-1
+  'Please<br/>Don\'t Vomit',     // slide-2
+  'Cult<br/>Starter Pack',       // slide-3
+  'Return<br/>to Sender',        // slide-4
+  'Unsubscribed',                // slide-5
+  'Nobody<br/>Asked',            // slide-6
+  'Last Supper<br/>(Casual)',    // slide-7
+  'Read Receipts<br/>Off',       // slide-8
+  'Wrong<br/>Platform',          // slide-9
+  'Emotional<br/>Support Donut', // slide-10
+  'Bad<br/>Hand',                // slide-11
+  'Worth<br/>the Cramps',        // slide-12
+  'Rent Is<br/>Overdue',         // slide-13
+  'Trust Fund<br/>Puppy',        // slide-14
+  'Stop<br/>Calling',            // slide-15
+  'Add<br/>to Cart',             // slide-16
+  'They<br/>Bite',               // slide-17
+  'Check Your<br/>Privilege',    // slide-18
+  'Post-Wedding<br/>Uber',       // slide-19
+  'Same<br/>Therapist',          // slide-20
+  'My SoundCloud<br/>Era',       // slide-21
+  '9 Lives,<br/>1 Outfit',       // slide-22
 ];
 
 
@@ -340,7 +338,7 @@ void main() {
   float frameLine = (1.0 - smoothstep(edgeAA * 0.5, edgeAA * 1.5, edgeDist)) * 0.22;
 
   float u = (vUv.x-bw)/(1.0-2.0*bw);
-  float w = mod(scrollV, 25.0);
+  float w = mod(scrollV, ${IMAGE_COUNT}.0);
   int idx = int(floor(w));
   float lv = fract(w);
 
@@ -495,6 +493,11 @@ class WheelSlider {
     this.introBend = 1;   // 1 = fully cylinder at start
     this.spliceBend = 0;  // 0 at rest; splice transition tweens toward 1
     this.introActive = true;
+    // Locked = detail route is open. Suspends the loop's bend-velocity
+    // update + predictive magnet so the cylinder freezes flat on the
+    // chosen frame and doesn't drift while the user is in detail mode.
+    // Set true by forwardSplice, cleared by reverseSplice.
+    this.locked = false;
     this.frame = 0;
     this.lastTooth = 0;
     this.shutterFlash = 0;
@@ -519,9 +522,7 @@ class WheelSlider {
       document.fonts.load('400 400px "Bulevar"').catch(() => {}),
     ]).then(() => {
       this.createStrip();
-      this._createAsciiBg();
-      this._createBgCircle();
-      this._createGridPlane();
+      this._createPond();
       this._createTextPlane();
       this._buildRadar();
       this.listen();
@@ -618,11 +619,11 @@ class WheelSlider {
 
     this.images = bitmaps;
 
-    // Precompute a vibrant dominant color per frame, used as the tint for
-    // the ASCII backdrop so each frame has its own signature palette
-    // (blue for the night-Paris frame, red for the rollercoaster, etc.)
-    // without making the image recognizable. Averages each bitmap at 16px
-    // then pushes saturation away from its own luminance for punch.
+    // Precompute a vibrant dominant color per frame, used as the ambient
+    // tint for the ASCII pond. Each frame has its own signature palette
+    // (warm for sunsets, cool for night frames, green for the tennis
+    // courts, etc.) without making the image recognizable. Averages each
+    // bitmap at 20px then pushes saturation away from luminance for punch.
     const small = document.createElement('canvas');
     small.width = 20;
     small.height = 20;
@@ -640,9 +641,11 @@ class WheelSlider {
         r += data[p]; g += data[p + 1]; b += data[p + 2];
       }
       r /= pixels; g /= pixels; b /= pixels;
-      // Push chroma away from luminance gray for vibrancy.
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const boost = 1.85;
+      // Saturation boost dialled back — Codrops-restrained editorial color.
+      // 1.7 was too vibrant on warm/red frames; 1.05 keeps subtle hue
+      // identity per frame without ever shouting.
+      const boost = 1.05;
       r = Math.max(0, Math.min(255, lum + (r - lum) * boost));
       g = Math.max(0, Math.min(255, lum + (g - lum) * boost));
       b = Math.max(0, Math.min(255, lum + (b - lum) * boost));
@@ -832,17 +835,8 @@ class WheelSlider {
       this.material.uniforms.uRadius.value = ph / params.wrapAngle;
       this.material.uniforms.uSlotH.value = imgW / ph;
 
-      // Resize the contact-sheet grid to the new viewport
-      if (this.gridMesh) {
-        const z = -2;
-        const dist = CAMERA_Z - z;
-        const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-        const visW = visH * this.camera.aspect;
-        this.gridMesh.geometry.dispose();
-        this.gridMesh.geometry = new THREE.PlaneGeometry(visW, visH);
-        this.gridMaterial.uniforms.uResolution.value.set(w, h);
-      }
-      // Resize the ASCII image plane
+      // Resize The Pond plane to match the viewport. uCellSize stays
+      // fixed at 14px so glyph density reads consistently across sizes.
       if (this.asciiMesh) {
         const z = -2.5;
         const dist = CAMERA_Z - z;
@@ -851,7 +845,6 @@ class WheelSlider {
         this.asciiMesh.geometry.dispose();
         this.asciiMesh.geometry = new THREE.PlaneGeometry(visW, visH);
         this.asciiMaterial.uniforms.uResolution.value.set(w, h);
-        this._syncBgCircleRadius();
       }
     };
     window.addEventListener('resize', onResize);
@@ -866,7 +859,16 @@ class WheelSlider {
     const vel = Math.abs(diff);
 
     this.scroll += diff * params.scrollSmoothing;
-    this.smoothBend += (Math.min(vel * params.bendSensitivity, 1) - this.smoothBend) * params.bendSmoothing;
+    if (this.locked) {
+      // Detail is open — fast-decay any residual bend so the cylinder
+      // visibly freezes flat. GSAP also tweens smoothBend to 0 in the
+      // splice; this fast-decay is the safety net for the frames
+      // before the GSAP tween catches up.
+      this.smoothBend *= 0.78;
+      if (this.smoothBend < 0.001) this.smoothBend = 0;
+    } else {
+      this.smoothBend += (Math.min(vel * params.bendSensitivity, 1) - this.smoothBend) * params.bendSmoothing;
+    }
 
     // Combine intro bend (tweened) with interaction bend (velocity-driven)
     // and splice-transition bend (tweened during page transition).
@@ -884,6 +886,7 @@ class WheelSlider {
     if (currentTooth !== this.lastTooth && !this.introActive && userActive) {
       this.lastTooth = currentTooth;
       this.shutterFlash = 1;
+      this._asciiShutterAge = 0; // reset the resolution-wave timer
       this.audio.snap();
     } else if (currentTooth !== this.lastTooth) {
       // Silent catch-up during momentum decay — no flash, no click
@@ -919,34 +922,49 @@ class WheelSlider {
       this.mesh.rotation.x = -this.parallaxY * 0.03;
     }
 
-    // Iris: only needs the shared time clock — rotation is self-driven.
-    if (this.gridMaterial) {
-      this.gridMaterial.uniforms.uTime.value = u.uTime.value;
-    }
+    // ── THE POND — sync time, velocity, tint, shutter ──────────────
+    //   Pure shader system; just feeds uniforms each frame.
+    //   uVelocity drives wave amplitude, ripple speed, and glitch noise.
+    //   uTint lerps between adjacent frames' dominant colors during scroll.
+    //   uShutter rides the cylinder's frame-land flash for synced pulses.
     if (this.asciiMaterial) {
       const u2 = this.asciiMaterial.uniforms;
       u2.uScroll.value = this.scroll;
       u2.uTime.value = u.uTime.value;
 
-      // Velocity signal — smoothed scroll-delta magnitude used to drive
-      // the grain storm, shimmer amplitude, and multi-exposure smear.
+      // Velocity signal — smoothed scroll-delta magnitude.
       const asciiDelta = Math.abs(this.scroll - (this._asciiPrevScroll ?? this.scroll));
       this._asciiPrevScroll = this.scroll;
       this._asciiVel = (this._asciiVel || 0) * 0.82 + asciiDelta * 0.18;
       const velNorm = Math.min(this._asciiVel * 42, 1);
       u2.uVelocity.value = velNorm;
 
-      // Shutter flash — reuses the main strip's shutterFlash so both
-      // layers flash on the exact same beat, punctuating frame landings
-      // as a single rig firing.
       u2.uShutter.value = this.shutterFlash || 0;
+
+      // ── STORYTELLING: RESOLUTION ARC ─────────────────────────────────
+      //   uResolved tracks how "crystallized" the photograph is in the
+      //   ASCII layer. Velocity collapses it toward chaos (0); stillness
+      //   recovers it toward 1 over ~500ms via a slow lerp. Shutter spikes
+      //   give it a brief boost so frame-lands clarify the field.
+      const resolvedTarget = Math.max(0, 1 - Math.min(velNorm * 1.5, 0.85))
+                           + (this.shutterFlash || 0) * 0.25;
+      this._asciiResolved = (this._asciiResolved ?? 1)
+                          + (Math.min(resolvedTarget, 1) - (this._asciiResolved ?? 1)) * 0.10;
+      u2.uResolved.value = this._asciiResolved;
+
+      // uShutterAge — seconds since the last tooth-click. Drives the
+      // radial resolution wave's growing radius. Reset to 0 in the
+      // tooth-detection block above; here we just integrate dt.
+      const nowS = u.uTime.value;
+      const dt = Math.min(0.05, nowS - (this._asciiPrevTime ?? nowS));
+      this._asciiPrevTime = nowS;
+      this._asciiShutterAge = (this._asciiShutterAge ?? 99) + dt;
+      u2.uShutterAge.value = this._asciiShutterAge;
 
       // Multi-exposure smear: tint is a Gaussian-weighted blend of the
       // 5 neighbor editions around the current scroll, spread widened
       // by velocity. At rest (vel≈0) the blend collapses to a single
-      // continuous interpolation between the two adjacent frames. At
-      // speed the tint is a smeared average — photographic long-exposure
-      // across editions.
+      // continuous interpolation between the two adjacent frames.
       if (this._asciiTints) {
         const N = IMAGE_COUNT;
         const sMod = ((this.scroll % N) + N) % N;
@@ -965,8 +983,6 @@ class WheelSlider {
         };
 
         const base = tintAt(sMod);
-        // Secondary storm palette (uYellow / uWhite) is fixed at material
-        // creation — no per-frame update. Consistent across all scrolling.
         if (velNorm < 0.08) {
           u2.uTint.value.set(base[0], base[1], base[2]);
         } else {
@@ -990,7 +1006,6 @@ class WheelSlider {
     }
 
     this.checkFrame();
-    this._updateBgCircle();
 
     // Viewfinder: acquisition-rig behavior. Brackets stay fixed size — no
     // extending arms. During motion a thin horizontal scanline sweeps
@@ -1057,7 +1072,7 @@ class WheelSlider {
       this._wheelVel = (this._wheelVel || 0) * 0.88;
       if (Math.abs(this._wheelVel) < 0.00001) this._wheelVel = 0;
     }
-    if (!this.dragging && !this.introActive && !this.peekOpen) {
+    if (!this.dragging && !this.introActive && !this.peekOpen && !this.locked) {
       const predicted = this.scrollTarget + (this._wheelVel || 0) * 400;
       const target = Math.round(predicted);
       this.scrollTarget += (target - this.scrollTarget) * 0.02;
@@ -1113,12 +1128,22 @@ class WheelSlider {
 
     // ─────────────────────────────────────────────────────────────────
     //  ACT 1  — ARRIVAL (1.2s, all three motions decelerate together)
-    //   silhouette rises · wheel spins 2 frames · text dissolves in
-    //   shared ease (power3.out) and shared duration → single landing
+    //   silhouette rises · wheel spins 3 frames into place · text
+    //   dissolves in. Shared ease + duration → single landing. The
+    //   spin starts at scroll=-3 (centered on frame 22) and lands at
+    //   scroll=0 (centered on frame 0, "Slow Burn"). Frames 22→23→24
+    //   pass under the gate during the spin and each gets its Conway
+    //   pattern stamped on the cellular field as it goes by — so the
+    //   field is already populated by the time the cylinder lands.
     // ─────────────────────────────────────────────────────────────────
     const vp = this.viewport();
     const arriveDur = 1.2;
     const arriveEase = 'power3.out';
+
+    // Pre-rotate before the timeline runs. checkFrame() will catch up
+    // on the very first render-loop tick, stamping the starting frame.
+    this.scroll = -3;
+    this.scrollTarget = -3;
 
     tl.to(this.mesh.position, {
       y: -vp.h * 0.7,
@@ -1127,8 +1152,8 @@ class WheelSlider {
     }, '-=0.1');
 
     tl.to(this, {
-      scroll: 2,
-      scrollTarget: 2,
+      scroll: 0,
+      scrollTarget: 0,
       duration: arriveDur,
       ease: arriveEase,
     }, '<');
@@ -1184,21 +1209,10 @@ class WheelSlider {
     // counter is inside navbar now — revealed together
     tl.to('.slide-info, .frame__meta, .hero-tech', { opacity: 1, duration: 0.4, ease: 'power2.out' }, 'hero+=0.7');
     tl.to('.viewfinder', { opacity: 1, duration: 0.45, ease: 'power2.out' }, 'hero+=0.9');
-    tl.to('.bg-circle-wrap', { opacity: 0.85, duration: 1.2, ease: 'power2.out' }, 'hero+=0.5');
-    tl.to('.bg-circle-index', { opacity: 1, duration: 1.0, ease: 'power2.out' }, 'hero+=0.8');
     // Instrument panel fades in on the deceleration tail alongside the rest
     // of the chrome — already pre-seeded with frame 0 so no value roll.
     tl.to('.instrument', { opacity: 1, duration: 0.6, ease: 'power2.out' }, 'hero+=0.75');
 
-    // Contact-sheet grid fades in at the tail — the photographic inspection
-    // surface the whole composition sits on.
-    if (this.gridMaterial) {
-      tl.to(this.gridMaterial.uniforms.uActive, {
-        value: 1,
-        duration: 1.2,
-        ease: 'power2.out',
-      }, 'hero+=0.3');
-    }
     // ASCII image backdrop fades in — a colored ghost of the reel rendered
     // as ASCII glyphs, living behind everything.
     if (this.asciiMaterial) {
@@ -1211,16 +1225,25 @@ class WheelSlider {
     // .nav-buttons removed — drag + keyboard + click are enough to navigate
   }
 
-  // ── Iris mechanism: a full-viewport plane behind everything that draws
-  //    an 8-blade aperture diaphragm rotating one revolution per ~60
-  // ── ASCII image shader: the current frame's atlas image is rendered as
-  //    colored ASCII art filling the background. Each cell samples the
-  //    image at its center, picks a glyph from a density ramp (' '→'@')
-  //    based on luminance, and colors it with the image's actual pixel
-  //    color. Fills the black negative space around the cylinder with a
-  //    living, colored ghost of the reel. Advances with scroll. ──
-  _createAsciiBg() {
-    // Build a character atlas — 10 glyphs in increasing density order.
+  // ── THE GRAIN ─────────────────────────────────────────────────────
+  //  Sparse `·` glyphs scattered across the viewport on an 18px grid.
+  //  Hash-selected so ~45% of cells are empty — irregular distribution,
+  //  not a wallpaper. Renders in the current frame's dominant color.
+  //
+  //  AT REST: completely static. No drift, no shimmer, no waves. Just
+  //  scattered dots at low alpha, almost subliminal. The film is the
+  //  focal point; the grain is texture.
+  //
+  //  ON SCROLL: the field doesn't wave. It CRACKLES. Cells near the
+  //  center start flickering — some go dark (dropouts), some pop into
+  //  a denser '+' for one frame (glitch sparks). Chaos peaks at the
+  //  center and falls off exponentially toward the edges. No periodic
+  //  motion, no clean math — pure noise-driven turbulence localized
+  //  where the projector gate sits.
+  // ─────────────────────────────────────────────────────────────────────
+  _createPond() {
+    // 10-glyph density ramp — original ASCII palette from the last
+    // committed version. Characters increase in density left-to-right.
     const CHARS = ' .:-=+*#%@';
     const GLYPH = 48;
     const charCanvas = document.createElement('canvas');
@@ -1254,18 +1277,20 @@ class WheelSlider {
         uTime:       { value: 0 },
         uTint:       { value: new THREE.Vector3(0.7, 0.7, 0.8) },
         // Fixed MAWZE chromatic-storm palette — warm film yellow + cream
-        // white. Always the same, regardless of which edition you're on.
-        // The yellow tonally rhymes with the cream text / film-base color
-        // elsewhere on the page, so the storm reads as "the rig speaking"
-        // rather than arbitrary decoration. Tamed down so peak-velocity
-        // doesn't blow out the composition.
+        // white. Consistent across all editions; the storm reads as
+        // "the rig speaking" rather than arbitrary decoration.
         uYellow:     { value: new THREE.Vector3(0.72, 0.58, 0.30) },
         uWhite:      { value: new THREE.Vector3(0.82, 0.78, 0.72) },
         uVelocity:   { value: 0 },
         uShutter:    { value: 0 },
-        // Circle aperture: ASCII backdrop masks to zero alpha inside the
-        // lens ring so the circle reads as a clean viewing porthole.
-        uCircleR:    { value: 0 },
+        // STORYTELLING UNIFORMS
+        // uResolved: 0 = chaos, 1 = photograph fully readable. Decays on
+        // velocity, climbs back on stillness. Lerped slowly in JS so the
+        // arc takes ~500ms to settle.
+        uResolved:   { value: 1 },
+        // uShutterAge: seconds since the last frame-land (tooth click).
+        // Resets to 0 on each tick. Drives the radial resolution wave.
+        uShutterAge: { value: 99 },
       },
       vertexShader: /* glsl */`
         varying vec2 vUv;
@@ -1289,24 +1314,26 @@ class WheelSlider {
         uniform vec3 uWhite;
         uniform float uVelocity;
         uniform float uShutter;
-        uniform float uCircleR;
+        uniform float uResolved;     // 0 = chaos, 1 = photograph crystallized
+        uniform float uShutterAge;   // seconds since last tooth-click
         varying vec2 vUv;
 
-        #define COLS 5.0
-        #define ROWS 5.0
-        #define N 25.0
+        #define COLS ${ATLAS_COLS}.0
+        #define ROWS ${ATLAS_ROWS}.0
+        #define N ${IMAGE_COUNT}.0
 
         float hash12(vec2 p) {
           return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
         }
 
         void main() {
-          // Cell layout on screen.
+          // ─── CELL LAYOUT ────────────────────────────────────────────
           vec2 px = vUv * uResolution;
           vec2 cellIdx = floor(px / uCellSize);
           vec2 cellCenterPx = (cellIdx + 0.5) * uCellSize;
           vec2 imgUV = cellCenterPx / uResolution;
 
+          // ─── ATLAS SAMPLE: photograph at this cell ──────────────────
           float sMod = mod(uScroll, N);
           if (sMod < 0.0) sMod += N;
           float fA = floor(sMod);
@@ -1324,59 +1351,94 @@ class WheelSlider {
           float lum = dot(imgColor.rgb, vec3(0.299, 0.587, 0.114));
           lum = pow(lum, 0.78);
 
-          // ── IDLE + VELOCITY-REACTIVE ANIMATION ───────────────────────
+          // ─── RADIAL RESOLUTION WAVE ─────────────────────────────────
+          //   Every tooth-click (frame-land) fires a thin sharp ring of
+          //   resolution that sweeps outward from the viewport center.
+          //   As the wave passes a cell, it forces that cell toward
+          //   "fully resolved" — the cell briefly snaps to its sharp
+          //   luminance glyph + brightens. After the ring passes, the
+          //   cell relaxes back to the ambient resolution level.
+          //
+          //   Aspect-corrected so the wavefront is a true circle on
+          //   any viewport ratio. Wave speed crosses ~0.7 of the
+          //   viewport in 0.7s. Decay over ~1.0s so the ring fades
+          //   cleanly past the edges.
+          float aspect = uResolution.x / uResolution.y;
+          vec2 toCenter = vec2((vUv.x - 0.5) * aspect, vUv.y - 0.5);
+          float distC = length(toCenter);
+          float waveRadius = uShutterAge * 1.05;
+          float waveBand   = exp(-pow((distC - waveRadius) * 9.0, 2.0));
+          float waveDecay  = exp(-uShutterAge * 1.4);
+          float wavePulse  = waveBand * waveDecay;
+
+          // Effective resolution at this fragment: ambient resolved
+          // level lifted by the passing wave.
+          float resolved = clamp(uResolved + wavePulse * 1.2, 0.0, 1.0);
+          float chaos = 1.0 - resolved;
+
+          // ─── IDLE BREATH + CHAOS-MODULATED ANIMATION ────────────────
+          //   Shimmer / grain / scanline ride on chaos so they vanish
+          //   when the field is fully resolved (still photograph) and
+          //   surge during chaos (scroll).
           float phase = hash12(cellIdx) * 6.2831;
-          float shimAmp = 0.032 + uVelocity * 0.09;
-          float shimFreq = 1.1 + uVelocity * 2.4;
-          float shimmer = sin(uTime * shimFreq + phase) * shimAmp;
-          float grainPulse = (hash12(cellIdx + fract(uTime * 3.1)) - 0.5) * uVelocity * 0.18;
-          float scanPos = fract(uTime * (0.08 + uVelocity * 0.35));
-          float scan = exp(-pow((vUv.y - (1.0 - scanPos)) * 5.8, 2.0)) * (0.1 + uVelocity * 0.1);
+          float shimAmp = 0.024 + chaos * 0.10;
+          float shimmer = sin(uTime * (1.1 + chaos * 1.8) + phase) * shimAmp;
+          float grainPulse = (hash12(cellIdx + fract(uTime * 3.1)) - 0.5) * chaos * 0.22;
+          float scanPos = fract(uTime * (0.06 + chaos * 0.30));
+          float scan = exp(-pow((vUv.y - (1.0 - scanPos)) * 5.8, 2.0)) * (0.10 + chaos * 0.16);
           lum = clamp(lum + shimmer + scan + grainPulse, 0.0, 1.0);
 
-          float charIdx = floor(lum * (uNumChars - 0.001));
+          // Luminance → glyph index along the density ramp.
+          float resolvedGlyph = floor(lum * (uNumChars - 0.001));
+
+          // ─── CHARACTER COLLAPSE ─────────────────────────────────────
+          //   During chaos, cells swap their luminance glyph for a
+          //   random one from the density ramp. The fraction of cells
+          //   that scramble scales with chaos. Wave-band cells are
+          //   pulled BACK toward their resolved glyph so the wave
+          //   visibly clears chaos as it passes.
+          float gTick = floor(uTime * 18.0);
+          float chaosGlyph = floor(hash12(cellIdx + vec2(gTick, 13.0)) * uNumChars);
+          float swapSeed = hash12(cellIdx + vec2(gTick, 0.0));
+          float swapAmount = chaos * 0.65;
+          float useChaos = step(1.0 - swapAmount, swapSeed);
+          float charIdx = mix(resolvedGlyph, chaosGlyph, useChaos);
+          // Wave snaps cells back to resolved glyph as it passes.
+          charIdx = mix(charIdx, resolvedGlyph, wavePulse);
 
           // Sample glyph atlas at cell-local UV.
           vec2 localUV = fract(px / uCellSize);
           vec2 charUV = vec2((charIdx + localUV.x) / uNumChars, localUV.y);
           float glyph = texture2D(uCharAtlas, charUV).r;
 
-          // ── DUOTONE + CHROMATIC STORM ────────────────────────────────
-          // At rest: each cell renders in the current edition's dominant
-          // tint. During scroll: cells dither into a hard-split yellow /
-          // cream palette (constant across all editions so the storm
-          // always reads the same). Mix capped so the frame tint keeps
-          // presence even at peak velocity — never fully dominated.
+          // ─── COLOR ARC ──────────────────────────────────────────────
+          //   At rest (resolved=1): per-frame tint, full identity.
+          //   In chaos (resolved=0): tint dithers into the storm
+          //   palette (yellow/cream split), low-saturation drift.
+          //   Wave temporarily snaps color back to per-frame tint.
           float cellHash = hash12(cellIdx * 0.73 + 11.3);
           vec3 stormTint = mix(uYellow, uWhite, step(0.5, cellHash));
-          float stormMix = clamp(uVelocity, 0.0, 1.0) * 0.55;
+          float stormMix = chaos * 0.30 * (1.0 - wavePulse);
           vec3 cellTint  = mix(uTint, stormTint, stormMix);
 
-          vec3 shadow    = cellTint * 0.08;
+          vec3 shadow    = cellTint * 0.10;
           vec3 highlight = mix(cellTint, vec3(1.0), 0.14);
           vec3 rgb = mix(shadow, highlight, lum);
 
-          // ── SHUTTER FLASH ───────────────────────────────────────────
-          // Fires with the main strip's shutter — same uniform value, so
-          // foreground and background flash together on each frame land.
-          float shutter = uShutter;
-          rgb += vec3(1.0, 0.94, 0.84) * shutter * 0.4;
+          // ─── WAVE BRIGHTENING ───────────────────────────────────────
+          //   Cells in the wave band brighten — the resolution
+          //   shockwave is visibly luminous as it sweeps outward.
+          rgb += uTint * wavePulse * 0.50;
 
-          // Overall alpha eases down during motion so the storm never
-          // shouts louder than the rest state — fast-scroll the grid
-          // fades slightly, settle brings it back. Shutter adds a small
-          // bloom kick that decays with the shutter itself.
-          float motionFade = 1.0 - uVelocity * 0.4;
-          float alpha = glyph * uActive * 0.26 * motionFade * (1.0 + shutter * 0.15);
+          // Frame-land bloom — small warm lift on top of the wave.
+          rgb += vec3(1.0, 0.94, 0.84) * uShutter * 0.22;
 
-          // Lens aperture mask — ASCII fades to zero inside the circle,
-          // leaving the aperture a clean viewing porthole for the cylinder.
-          // The mask is soft (18px feather) so the edge reads as optical,
-          // not a hard cutout.
-          vec2 cenPx = uResolution * 0.5;
-          float distFromCenter = distance(vUv * uResolution, cenPx);
-          float apertureMask = smoothstep(uCircleR - 28.0, uCircleR + 4.0, distFromCenter);
-          alpha *= apertureMask;
+          // ─── ALPHA ──────────────────────────────────────────────────
+          //   Base presence dropped to 0.24 so the layer recedes and
+          //   the photograph leads. The resolution wave still kicks
+          //   alpha sharply so the shockwave reads as a moment of
+          //   clarity, not a uniform field surge.
+          float alpha = glyph * uActive * (0.24 + wavePulse * 0.55 + uShutter * 0.18);
 
           gl_FragColor = vec4(rgb, alpha);
         }
@@ -1396,158 +1458,6 @@ class WheelSlider {
     this.asciiMesh.position.z = z;
     this.asciiMesh.renderOrder = -7;
     this.scene.add(this.asciiMesh);
-  }
-
-  // ── Lens-aperture circle: generates 25 tick marks (one per edition)
-  //    on the SVG rim, then wires scroll-driven rotation and active-tick
-  //    highlighting in the render loop (via updateBgCircle). Major ticks
-  //    every 5 frames. Rotates so the current frame's tick sits at top. ──
-  _createBgCircle() {
-    this.bgCircleWrap = document.getElementById('bg-circle-wrap');
-    const ticksEl = document.getElementById('bg-circle-ticks');
-    if (!this.bgCircleWrap || !ticksEl) return;
-
-    const SVG_NS = 'http://www.w3.org/2000/svg';
-    this.bgCircleTicks = [];
-    for (let i = 0; i < IMAGE_COUNT; i++) {
-      // Start at top (-90° in SVG coords = -PI/2) and go clockwise.
-      const angle = -Math.PI / 2 + (i / IMAGE_COUNT) * Math.PI * 2;
-      const major = i % 5 === 0;
-      const rIn   = major ? 91 : 94;
-      const rOut  = 98;
-      const x1 = Math.cos(angle) * rIn;
-      const y1 = Math.sin(angle) * rIn;
-      const x2 = Math.cos(angle) * rOut;
-      const y2 = Math.sin(angle) * rOut;
-      const line = document.createElementNS(SVG_NS, 'line');
-      line.setAttribute('x1', x1.toFixed(3));
-      line.setAttribute('y1', y1.toFixed(3));
-      line.setAttribute('x2', x2.toFixed(3));
-      line.setAttribute('y2', y2.toFixed(3));
-      if (major) line.classList.add('bg-circle__tick--major');
-      ticksEl.appendChild(line);
-      this.bgCircleTicks.push(line);
-    }
-    this._bgCircleActiveTick = -1;
-    this._syncBgCircleRadius();
-  }
-
-  // Sync the ASCII shader's aperture radius with the CSS circle size.
-  _syncBgCircleRadius() {
-    if (!this.asciiMaterial) return;
-    const minDim = Math.min(window.innerWidth, window.innerHeight);
-    // min(82vh, 82vw) / 2 — matches CSS. Subtract a pixel so the mask
-    // bleeds just under the SVG stroke instead of bleeding through it.
-    const radius = minDim * 0.41 - 1;
-    this.asciiMaterial.uniforms.uCircleR.value = radius;
-  }
-
-  // Per-frame update: rotate the circle so the current frame's tick is
-  // at 12 o'clock, and mark that tick "active" (warm-yellow highlight).
-  _updateBgCircle() {
-    if (!this.bgCircleWrap || !this.bgCircleTicks) return;
-    const N = IMAGE_COUNT;
-    // Smoothly map continuous scroll → rotation. Negative so the circle
-    // rotates against scroll direction — giving the top position its
-    // natural "current frame" anchoring.
-    const rot = -(this.scroll / N) * 360;
-    this.bgCircleWrap.style.transform =
-      `translate(-50%, -50%) rotate(${rot.toFixed(3)}deg)`;
-
-    const cur = ((Math.round(this.scroll) % N) + N) % N;
-    if (cur !== this._bgCircleActiveTick) {
-      if (this._bgCircleActiveTick >= 0) {
-        const prev = this.bgCircleTicks[this._bgCircleActiveTick];
-        prev.classList.remove('bg-circle__tick--active');
-        // Clear any pulse residue so inactive ticks return to base.
-        prev.style.strokeWidth = '';
-        prev.style.filter = '';
-      }
-      this.bgCircleTicks[cur].classList.add('bg-circle__tick--active');
-      this._bgCircleActiveTick = cur;
-    }
-
-    // Shutter pulse on the active tick — fires in lockstep with the
-    // main strip's shutterFlash, so the index blooms alongside the
-    // cylinder on every frame landing. Mutations only when active
-    // (no per-frame writes when shutter is ~zero).
-    const activeTick = this.bgCircleTicks[this._bgCircleActiveTick];
-    const s = this.shutterFlash || 0;
-    if (activeTick) {
-      if (s > 0.02) {
-        activeTick.style.strokeWidth = (0.45 + s * 0.55).toFixed(3);
-        activeTick.style.filter =
-          `drop-shadow(0 0 ${(s * 2.8).toFixed(2)}px rgba(221, 183, 104, 0.95))`;
-      } else if (this._bgTickPulseActive) {
-        activeTick.style.strokeWidth = '';
-        activeTick.style.filter = '';
-      }
-      this._bgTickPulseActive = s > 0.02;
-    }
-  }
-
-  // ── Graph-paper dot lattice plane behind the cylinder — a photographic
-  //    inspection surface. Static dots at ultra-low alpha, WebGL-native. ──
-  _createGridPlane() {
-    this.gridMaterial = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      depthTest: false,
-      uniforms: {
-        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-        uActive:     { value: 0 },
-        uTime:       { value: 0 },
-      },
-      vertexShader: /* glsl */`
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: /* glsl */`
-        precision highp float;
-        uniform vec2 uResolution;
-        uniform float uActive;
-        uniform float uTime;
-        varying vec2 vUv;
-
-        void main() {
-          // Graph-paper measurement surface — a static dot lattice. Lives
-          // behind every other layer at ultra-low alpha so it reads as a
-          // technical background, not decoration. The per-frame data
-          // graphs drawn on top are what make it feel alive.
-          vec2 px = vUv * uResolution;
-          const float SP = 28.0;
-          vec2 g = mod(px + SP * 0.5, SP) - SP * 0.5;
-          float r = length(g);
-          float core = smoothstep(1.0, 0.45, r);
-          float halo = smoothstep(2.0, 1.0, r) * 0.08;
-          float dotA = max(core, halo);
-
-          vec3 ink = vec3(0.08, 0.07, 0.06);
-          float a = dotA * 0.075 * uActive;
-
-          gl_FragColor = vec4(ink, a);
-        }
-      `,
-    });
-
-    // Size the plane to exactly fill the viewport at a fixed depth behind
-    // the text plane (z=-1) so transparent sorting (back-to-front) composites
-    // grid → text → film in that order.
-    const z = -2;
-    const dist = CAMERA_Z - z;
-    const visH = 2 * dist * Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    const visW = visH * this.camera.aspect;
-
-    this.gridMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(visW, visH),
-      this.gridMaterial
-    );
-    this.gridMesh.position.z = z;
-    this.gridMesh.renderOrder = -5;
-    this.scene.add(this.gridMesh);
   }
 
   // ── WebGL text plane: serif "Film / Wheel" rendered to a high-res 2D
@@ -1955,7 +1865,7 @@ const router = new Router({
       if (spliceEngaged && slider.mesh && !slider.introActive) {
         await reverseSplice({ slider, frame: prev.frame, detailRoot, frameState: buildFrameState() });
       } else {
-        await simpleReverse({ detailRoot });
+        await simpleReverse({ detailRoot, slider });
       }
       spliceEngaged = false;
       slider.peekOpen = false;
@@ -1965,7 +1875,7 @@ const router = new Router({
     if (next.name === 'frame') {
       // Can't splice before textures + mesh exist. If boot isn't done yet, direct-load.
       if (!slider.mesh || slider.introActive) {
-        directLoadDetail({ frame: next.frame, detailRoot, frameState: buildFrameState() });
+        directLoadDetail({ slider, frame: next.frame, detailRoot, frameState: buildFrameState() });
         slider.peekOpen = true;
         spliceEngaged = false;
         return;
@@ -2000,6 +1910,6 @@ document.addEventListener('click', (e) => {
   const initial = parsePath(location.pathname);
   if (initial.name !== 'frame') return;
   slider.peekOpen = true;
-  directLoadDetail({ frame: initial.frame, detailRoot, frameState: buildFrameState() });
+  directLoadDetail({ slider, frame: initial.frame, detailRoot, frameState: buildFrameState() });
   router.current = initial;
 })();

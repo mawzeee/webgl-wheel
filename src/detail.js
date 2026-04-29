@@ -2,32 +2,32 @@ import { gsap } from 'gsap';
 
 // Expanded per-frame narrative/credit copy. Tailored to the frame's title.
 // Kept deliberately short; the detail page is cinematic, not a blog post.
+// Caption per frame. The image roster has been replaced; lines below
+// hold their old slot order and may not narratively match the new
+// photographs — Karim will rewrite per-slide as he curates.
 const CAPTIONS = [
-  'A rollercoaster, three-deep, cotton candy and denial. A study in commitment to the bit.',
-  'Red moon, brass bowls, a desert about to apologise. The gear is for the vibes.',
-  'Every opinion you had returned, at speed, in yellow.',
-  'Prayer as exit strategy. You have been marked unavailable.',
-  'Popcorn protagonists. The scene is happening because they said so.',
-  'The last supper, but everybody ordered the same thing.',
-  'Coastline as coping mechanism. The phone is on silent.',
-  'Subway platform, wrong line, right outfit. A patient crisis.',
-  'Comfort comes sprinkled. A bouquet of carbs for solo dining.',
-  'Moonlight poker. You are losing with dignity.',
-  'Committed eating. Neither shirt will recover.',
-  'Paris as a budgeting problem. The espresso is the only honest thing.',
-  'The dog reads finance. The dog does not need your advice.',
-  'Incoming call, declined. The receiver weighs four pounds and an apology.',
-  'A cart full of motion. Every ball a missed serve.',
-  'Pink Ferrari, two dogs, no plan. The teeth are for decoration.',
-  'Chess in fur. A power move with maintenance costs.',
-  'Bridal suite to backseat. The city is indifferent, as cities are.',
-  'Twins by spirit. One appointment, two diagnoses.',
-  'Sub-bass sermon. Please do not request the song.',
-  'Nine lives, one fit. The lollipop is non-negotiable.',
-  'Altitude chess. The weather is a second opponent.',
-  'A pizza seen from God. The crusts judge you.',
-  'He left, she stayed, the leftovers won.',
-  'Still in beta. Forever, probably.',
+  'Suit, smoke, sand, horse. The car has been still longer than he has.',                       // 1
+  'A rollercoaster, three-deep, cotton candy and denial. A study in commitment to the bit.',     // 2
+  'Red moon, brass bowls, a desert about to apologise. The gear is for the vibes.',              // 3
+  'Every opinion you had returned, at speed, in yellow.',                                        // 4
+  'Prayer as exit strategy. You have been marked unavailable.',                                  // 5
+  'Popcorn protagonists. The scene is happening because they said so.',                          // 6
+  'The last supper, but everybody ordered the same thing.',                                      // 7
+  'Coastline as coping mechanism. The phone is on silent.',                                      // 8
+  'Subway platform, wrong line, right outfit. A patient crisis.',                                // 9
+  'Comfort comes sprinkled. A bouquet of carbs for solo dining.',                                // 10
+  'Moonlight poker. You are losing with dignity.',                                               // 11
+  'Committed eating. Neither shirt will recover.',                                               // 12
+  'Paris as a budgeting problem. The espresso is the only honest thing.',                        // 13
+  'The dog reads finance. The dog does not need your advice.',                                   // 14
+  'Incoming call, declined. The receiver weighs four pounds and an apology.',                    // 15
+  'A cart full of motion. Every ball a missed serve.',                                           // 16
+  'Pink Ferrari, two dogs, no plan. The teeth are for decoration.',                              // 17
+  'Chess in fur. A power move with maintenance costs.',                                          // 18
+  'Bridal suite to backseat. The city is indifferent, as cities are.',                           // 19
+  'Twins by spirit. One appointment, two diagnoses.',                                            // 20
+  'Sub-bass sermon. Please do not request the song.',                                            // 21
+  'Nine lives, one fit. The lollipop is non-negotiable.',                                        // 22
 ];
 
 // Kodak stocks rotated to feel artisanal. Not tied to actual film chemistry.
@@ -47,30 +47,19 @@ const LOCATIONS = [
 
 const pad3 = n => String(n).padStart(3, '0');
 
-export function renderDetail({ frame, total, title, signature, tech, imagePath, caption, stock, camera, location, gridImages }) {
-  const titleClean = title.replace(/<br\s*\/?>/gi, ' ');
+export function renderDetail({ frame, total, title, signature, tech, imagePath, caption, stock, camera, location }) {
   const titleLines = title.split(/<br\s*\/?>/i);
   const titleHtml = titleLines
     .map(l => `<span class="detail-header__line"><span>${l.trim()}</span></span>`)
     .join('');
 
-  // gridImages is [-2, -1, clicked, +1, +2]. The clicked (center) slot is
-  // rendered as an empty 4-col placeholder so the four flanking frames keep
-  // their 2c width — the "hole" in the middle is where the slider frame
-  // would have lived, conceptually.
-  const centerIdx = Math.floor(gridImages.length / 2);
-  const gridCells = gridImages
-    .map((src, i) => {
-      if (i === centerIdx) {
-        return `<div class="detail-grid__cell detail-grid__cell--empty" aria-hidden="true"></div>`;
-      }
-      return `<figure class="detail-grid__cell">
-        <img src="${src}" alt="" loading="lazy" />
-      </figure>`;
-    }).join('');
-
   return `
     <article class="detail__page" data-frame="${frame}">
+      <!-- HERO — transparent 100vh spacer. The cylinder mesh on the canvas
+           below (z:10) is scaled to fill the viewport during the route
+           transition; this section gives it room to BREATHE through the
+           detail page. Chrome (top bar, EXIF, status) sits absolutely
+           on top of the projected frame. -->
       <section class="detail-hero-section">
         <header class="detail-top">
           <a href="/" class="detail-top__back" data-nav="home">
@@ -80,28 +69,31 @@ export function renderDetail({ frame, total, title, signature, tech, imagePath, 
           <span class="detail-top__idx">${pad3(frame + 1)} / ${pad3(total)}</span>
         </header>
 
-        <div class="detail-header">
-          <span class="detail-header__eyebrow">FRAME ${pad3(frame + 1)} · ${stock}</span>
-          <h1 class="detail-header__title">${titleHtml}</h1>
-          <div class="detail-header__exif">
-            <span>ISO ${tech.iso}</span>
-            <span class="detail-header__sep">·</span>
-            <span>${tech.ap}</span>
-            <span class="detail-header__sep">·</span>
-            <span>${tech.sh}s</span>
-            <span class="detail-header__sep">·</span>
-            <span>EV ${tech.ev}</span>
-          </div>
+        <!-- BL: EXIF rail. Same letterforms, same baseline as home. -->
+        <div class="detail-exif">
+          <span class="detail-exif__idx">${pad3(frame + 1)}/${pad3(total)}</span>
+          <span class="detail-exif__sep">·</span>
+          <span>ISO ${tech.iso}</span>
+          <span class="detail-exif__sep">·</span>
+          <span>${tech.ap}</span>
+          <span class="detail-exif__sep">·</span>
+          <span>${tech.sh}<i>s</i></span>
+          <span class="detail-exif__sep">·</span>
+          <span>EV ${tech.ev}</span>
         </div>
 
-        <section class="detail-grid" aria-label="Frame spread">
-          ${gridCells}
-        </section>
+        <!-- BR: stock + LOCKED. The single new word on the page. -->
+        <div class="detail-status">
+          <span>35mm · ${stock}</span>
+          <span class="detail-status__sep">·</span>
+          <span class="detail-status__locked">LOCKED</span>
+        </div>
       </section>
 
       <section class="detail-story">
         <div class="detail-story__inner">
-          <span class="detail-story__eyebrow">FRAME ${pad3(frame + 1)} · CAPTION</span>
+          <span class="detail-story__eyebrow">FRAME ${pad3(frame + 1)} · ${stock}</span>
+          <h1 class="detail-story__title">${titleHtml}</h1>
           <p class="detail-story__lead">${caption}</p>
           <div class="detail-story__meta">
             <div class="detail-story__col">
@@ -175,58 +167,41 @@ export function locationFor(i) { return LOCATIONS[i % LOCATIONS.length]; }
 // in its "from" state synchronously so no frame ever paints them at their
 // final opacity before the timeline gets a chance to run.
 export function prepDetailContent(root) {
-  const top   = root.querySelector('.detail-top');
-  const cells = root.querySelectorAll('.detail-grid__cell:not(.detail-grid__cell--empty)');
-  const title = root.querySelectorAll('.detail-header__line > span');
-  const eye   = root.querySelector('.detail-header__eyebrow');
-  const exif  = root.querySelector('.detail-header__exif');
+  const top    = root.querySelector('.detail-top');
+  const exif   = root.querySelector('.detail-exif');
+  const status = root.querySelector('.detail-status');
+  // Long-form title lines (the dark-humor title now lives in .detail-story).
+  // Parked off-mask so they slide up when scroll-revealed.
+  const title  = root.querySelectorAll('.detail-story__title .detail-header__line > span');
 
-  gsap.set(top,   { y: -14, opacity: 0 });
-  gsap.set(cells, { y: 24, opacity: 0 });
-  gsap.set(eye,   { y: 10, opacity: 0 });
-  gsap.set(title, { y: '115%' });
-  gsap.set(exif,  { y: 10, opacity: 0 });
+  gsap.set(top,    { y: -14, opacity: 0 });
+  gsap.set(exif,   { y: 10, opacity: 0 });
+  gsap.set(status, { y: 10, opacity: 0 });
+  gsap.set(title,  { y: '115%' });
 }
 
-// Intro animation: top bar fades in, grid cells rise with a stagger, then
-// the title lines slide up and the exif row lands.
+// Intro animation: hero chrome only — top bar, EXIF rail, status. The lens
+// layer with the held still is animated separately via transition.js
+// (the gate is the spatial anchor; it doesn't enter, it stays). The
+// dark-humor title lives in the long-form section and reveals on scroll.
 export function enterDetailContent(root) {
-  const top   = root.querySelector('.detail-top');
-  const cells = root.querySelectorAll('.detail-grid__cell:not(.detail-grid__cell--empty)');
-  const title = root.querySelectorAll('.detail-header__line > span');
-  const eye   = root.querySelector('.detail-header__eyebrow');
-  const exif  = root.querySelector('.detail-header__exif');
+  const top    = root.querySelector('.detail-top');
+  const exif   = root.querySelector('.detail-exif');
+  const status = root.querySelector('.detail-status');
 
   const tl = gsap.timeline();
-  tl.to(top,   { y: 0, opacity: 1, duration: 0.55, ease: 'power2.out' }, 0);
-  tl.to(cells, { y: 0, opacity: 1, duration: 0.7, ease: 'power3.out', stagger: 0.06 }, 0.05);
-  tl.to(eye,   { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.35);
-  tl.to(title, { y: '0%', duration: 0.85, ease: 'power3.out', stagger: 0.06 }, 0.4);
-  tl.to(exif,  { y: 0, opacity: 1, duration: 0.5, ease: 'power2.out' }, 0.55);
+  tl.to(top,    { y: 0, opacity: 1, duration: 0.55, ease: 'power2.out' }, 0);
+  tl.to(exif,   { y: 0, opacity: 1, duration: 0.5,  ease: 'power2.out' }, 0.22);
+  tl.to(status, { y: 0, opacity: 1, duration: 0.5,  ease: 'power2.out' }, 0.30);
   return tl;
 }
 
 export function leaveDetailContent(root) {
-  const top   = root.querySelector('.detail-top');
-  const cells = root.querySelectorAll('.detail-grid__cell:not(.detail-grid__cell--empty)');
-  const title = root.querySelectorAll('.detail-header__line > span');
-  const header = root.querySelector('.detail-header');
+  const top    = root.querySelector('.detail-top');
+  const exif   = root.querySelector('.detail-exif');
+  const status = root.querySelector('.detail-status');
 
   const tl = gsap.timeline();
-  tl.to([top, header], { opacity: 0, duration: 0.25, ease: 'power2.in' }, 0);
-  tl.to(title, { y: '115%', duration: 0.35, ease: 'power2.in', stagger: 0.03 }, 0);
-  tl.to(cells, { y: 12, opacity: 0, duration: 0.3, ease: 'power2.in', stagger: 0.03 }, 0);
+  tl.to([top, exif, status], { opacity: 0, duration: 0.25, ease: 'power2.in' }, 0);
   return tl;
-}
-
-// Builds the 5-cell grid for a given frame: [frame-2, frame-1, frame, frame+1, frame+2]
-// (all wrapped mod IMAGE_COUNT). The clicked frame lives dead-center at a
-// larger span, flanked by its two nearest neighbours on each side.
-export function gridImagesFor(frame, imagePaths) {
-  const total = imagePaths.length;
-  const arr = [];
-  for (let i = -2; i <= 2; i++) {
-    arr.push(imagePaths[((frame + i) % total + total) % total]);
-  }
-  return arr;
 }

@@ -4,7 +4,7 @@ export function parsePath(pathname) {
   const m = pathname.match(FRAME_RE);
   if (m) {
     const n = parseInt(m[1], 10);
-    if (n >= 1 && n <= 25) return { name: 'frame', frame: n - 1 };
+    if (n >= 1 && n <= 22) return { name: 'frame', frame: n - 1 };
   }
   return { name: 'home' };
 }

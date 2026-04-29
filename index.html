@@ -40,30 +40,7 @@
       <span id="pre-loader-pct">000</span>
     </div>
 
-    <div id="canvas-container">
-      <!-- Lens aperture: two concentric rings + 25 tick marks (one per
-           edition). Sits inside the canvas-container so it scales with
-           the card during the detail-route transition. The ring rotates
-           with scroll so the current frame's tick is always at 12 o'clock,
-           making the circle a visual index of the reel. Ticks are
-           generated in JS once the viewport is known. -->
-      <div class="bg-circle-wrap" id="bg-circle-wrap" aria-hidden="true">
-        <svg class="bg-circle-svg" viewBox="-100 -100 200 200"
-             preserveAspectRatio="xMidYMid meet">
-          <circle class="bg-circle__outer" cx="0" cy="0" r="98" />
-          <circle class="bg-circle__inner" cx="0" cy="0" r="94" />
-          <g class="bg-circle__ticks" id="bg-circle-ticks"></g>
-        </svg>
-      </div>
-      <!-- Fixed index marker at 12 o'clock — does NOT rotate. It's the
-           "you are here" pointer. The rotating ring above positions the
-           current edition's tick right under this marker on every land. -->
-      <svg class="bg-circle-index" viewBox="-100 -100 200 200"
-           preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        <polygon class="bg-circle-index__chevron"
-                 points="0,-86 -3.6,-94 3.6,-94" />
-      </svg>
-    </div>
+    <div id="canvas-container"></div>
 
     <!-- Editorial chrome — strict 4-corner grid, each corner one job only. -->
     <div class="frame">
@@ -78,7 +55,7 @@
 
       <!-- Middle-left: the one piece of editorial typography -->
       <div class="slide-info">
-        <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">The Card</span></span><span class="line-wrap"><span class="line">Players</span></span></h2>
+        <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">Slow</span></span><span class="line-wrap"><span class="line">Burn</span></span></h2>
       </div>
 
       <!-- Middle-right: instrument panel — radar chart + metric readouts.

@@ -85,77 +85,6 @@ body.daylight .slide-title        { color: var(--ink); }
 
 #canvas-container { touch-action: none; }
 
-/* Lens aperture — two concentric rings + 25 tick marks (one per edition).
-   The wrapper is rotated by JS in sync with scroll so the current frame's
-   tick sits at 12 o'clock. Inside the rings: clean viewing zone for the
-   cylinder. Outside: ASCII backdrop renders. */
-.bg-circle-wrap {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: min(82vh, 82vw);
-  height: min(82vh, 82vw);
-  transform: translate(-50%, -50%) rotate(0deg);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1.2s ease-out;
-  will-change: transform;
-}
-.bg-circle-svg {
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-.bg-circle__outer {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 0.22;
-  opacity: 0.5;
-}
-.bg-circle__inner {
-  fill: none;
-  stroke: var(--ink);
-  stroke-width: 0.14;
-  opacity: 0.28;
-}
-.bg-circle__ticks line {
-  stroke: var(--ink);
-  stroke-width: 0.18;
-  opacity: 0.42;
-}
-.bg-circle__ticks line.bg-circle__tick--major {
-  stroke-width: 0.32;
-  opacity: 0.62;
-}
-.bg-circle__ticks line.bg-circle__tick--active {
-  stroke: #DDB768;
-  stroke-width: 0.45;
-  opacity: 1;
-}
-
-/* Fixed index marker — sits at 12 o'clock relative to the viewport,
-   independent of the ring's rotation. A small warm-yellow chevron
-   pointing inward. Matches the active tick hue so they read as one
-   element across the boundary: outside = "you are here" pointer,
-   inside = the tick currently under it. */
-.bg-circle-index {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: min(82vh, 82vw);
-  height: min(82vh, 82vw);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1.2s ease-out;
-  overflow: visible;
-}
-.bg-circle-index__chevron {
-  fill: #DDB768;
-  /* Gentle warm glow so the marker anchors the composition. */
-  filter: drop-shadow(0 0 0.6px rgba(221, 183, 104, 0.8));
-}
-
 /* ── Viewfinder: four L-shaped corners locking onto the centered frame.
      Size derived from the slider's stripWidth (the image occupies ~32% of
      the viewport width at desktop defaults). --vf-size can be updated from
@@ -839,7 +768,10 @@ body.route-frame .frame {
   z-index: 50;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--bg);
+  /* Transparent — the WebGL cylinder (projected to fill viewport) shows
+     through the hero spacer at the top. Long-form sections below carry
+     their own opaque bg so they read as "page" content. */
+  background: transparent;
   color: var(--ink);
   transform: translate3d(0, 100%, 0);
   pointer-events: none;
@@ -855,29 +787,48 @@ body.route-frame .frame {
   min-height: 100vh;
 }
 
-/* ── First viewport: top bar · centered title · grid pinned to bottom.
-     The whole hero section fits exactly in 100vh with 20px gutter from
-     every edge (including 20px from bottom of viewport to grid). ── */
+/* ── First viewport on detail: a transparent 100vh spacer that gives
+     the projected WebGL cylinder room to fill the screen behind the
+     detail page. Chrome (top bar, EXIF, status) sits absolutely on top.
+     The lower edge of this spacer is where the long-form sections
+     (with their own opaque bg) start to scroll up over the projection. ── */
 
 .detail-hero-section {
-  min-height: 100vh;
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
+  position: relative;
+  height: 100vh;
+  height: 100svh;
+  padding: 0;
   box-sizing: border-box;
+  /* Transparent — the canvas (z:10) shows through. The WebGL cylinder
+     mesh, scaled to fill the viewport during the route transition,
+     IS the hero image. */
+  background: transparent;
+}
+
+/* Long-form sections each carry their own opaque background so they
+   read as page content scrolling up over the WebGL projection. */
+.detail-story,
+.detail-sig,
+.detail-foot {
+  background: var(--bg);
+  position: relative;
 }
 
 .detail-top {
+  position: absolute;
+  top: var(--safe-y);
+  left: var(--safe-x);
+  right: var(--safe-x);
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
   padding: 0;
   font-family: var(--mono);
-  font-size: var(--chrome);
-  letter-spacing: var(--ls);
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
+  z-index: 4;
 }
 .detail-top__back {
   display: inline-flex;
@@ -897,109 +848,88 @@ body.route-frame .frame {
   font-feature-settings: 'tnum' 1;
 }
 
-/* ── Header block: eyebrow + display title + exif row.
-     Sits ABOVE the grid. Title is full-line width, center-aligned. ── */
+/* The hero on detail is GATE-ONLY — no title, no eyebrow. The lens
+   ring + held still is the entire focal element. The dark-humor title
+   moves to the long-form caption (magazine-style: image first, headline
+   on turn). The .detail-header__line wrap classes are reused inside
+   .detail-story__title for the slide-up animation; rules below. */
 
-.detail-header {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 0;
-  width: 100%;
-  text-align: center;
-}
-.detail-header__eyebrow {
-  display: block;
-  font-family: var(--mono);
-  font-size: var(--micro);
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.detail-header__title {
-  font-family: var(--display);
-  font-weight: 400;
-  /* Display-scale: fills the line on desktop. The Round8 display font
-     carries a tall em-box, so we pull line-height below 1 and cancel the
-     mask's padding with a matching negative margin to get poster-tight
-     stacking without clipped descenders. */
-  font-size: clamp(64px, 11vw, 220px);
-  line-height: 0.88;
-  letter-spacing: -0.02em;
-  margin: 0;
-  color: var(--ink);
-  width: 100%;
-  text-align: center;
-  text-wrap: balance;
-}
 .detail-header__line {
   display: block;
   overflow: hidden;
-  padding-bottom: 0.06em;     /* descender room for the slide-up mask */
-  margin-bottom: -0.06em;     /* cancels the padding so lines stack tight */
-}
-.detail-header__line:last-child {
-  margin-bottom: 0;
+  padding-bottom: 2px;
 }
 .detail-header__line > span {
   display: block;
   will-change: transform;
 }
-.detail-header__exif {
+
+/* ── EXIF rail (BL) — same composition as home's .hero-tech, same
+     baseline, same letterforms. Frozen values for this frame. ── */
+.detail-exif {
+  position: absolute;
+  bottom: var(--safe-y);
+  left: var(--safe-x);
   display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
   gap: 10px;
+  align-items: baseline;
   font-family: var(--mono);
-  font-size: var(--chrome);
-  letter-spacing: var(--ls);
+  font-size: 10px;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  color: rgba(239, 230, 214, 0.62);
   font-feature-settings: 'tnum' 1;
+  z-index: 4;
 }
-.detail-header__sep { opacity: 0.5; }
+.detail-exif__sep { opacity: 0.32; }
+.detail-exif__idx { color: rgba(239, 230, 214, 0.92); }
+.detail-exif i {
+  font-style: normal;
+  font-size: 9px;
+  opacity: 0.7;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
 
-/* ── 12-col grid — 5 images in a row: [2c][2c][4c center][2c][2c].
-     The 4-col center cell matches the home slider's on-screen width
-     (~32% viewport), so the clicked frame reads as the same image just
-     placed into the spread. The four flanking cells are half that width.
-     20px margin around, 20px gutter between. ── */
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 20px;
-  padding: 0;
-  margin: 0;
-  align-items: center;
+/* ── Stock + LOCKED rail (BR) — replaces home's φ live coordinate.
+     The single new word on the page: LOCKED. The smallest possible
+     signal that the rig has committed to one frame. Warm-yellow accent
+     matching the active tick on the lens ring. ── */
+.detail-status {
+  position: absolute;
+  bottom: var(--safe-y);
+  right: var(--safe-x);
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(239, 230, 214, 0.62);
+  font-feature-settings: 'tnum' 1;
+  z-index: 4;
 }
-.detail-grid__cell {
-  grid-column: span 2;
-  margin: 0;
-  aspect-ratio: 1 / 1;
-  overflow: hidden;
-  background: #111;
-  position: relative;
+.detail-status__sep { opacity: 0.32; }
+.detail-status__locked {
+  color: #DDB768;
+  letter-spacing: 0.18em;
+  /* Soft glow that matches the active tick — single visual rhyme
+     between the corner status and the ring's 12 o'clock highlight. */
+  text-shadow: 0 0 8px rgba(221, 183, 104, 0.45);
 }
-/* Empty center placeholder — 4 cols of intentional negative space where
-   the slider's frame image would sit. Its 4-col footprint is what keeps
-   the flanking images at the exact 2c width they'd have with a center
-   image present. No background, no aspect-ratio (collapses to 0 height,
-   which is fine since row height is set by the 2c flankers). */
-.detail-grid__cell--empty {
-  grid-column: span 4;
-  background: transparent;
-  aspect-ratio: auto;
+.detail-status__locked::before {
+  content: '●';
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 7px;
+  vertical-align: 1px;
+  /* Slow pulse — the rig is alive, even at rest. */
+  animation: locked-pulse 2.4s ease-in-out infinite;
 }
-.detail-grid__cell img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+@keyframes locked-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1.0; }
 }
 
 /* ── Story section ───────────────────────────────────────────── */
@@ -1022,14 +952,32 @@ body.route-frame .frame {
   text-transform: uppercase;
   color: var(--muted);
 }
+/* Long-form title — the dark-humor headline. Lives at the top of the
+   story section, magazine-style. Round8 at poster scale. Eyebrow above
+   it, lead caption below. The slide-up reveal uses the existing
+   .detail-header__line / span machinery. */
+.detail-story__title {
+  font-family: var(--display);
+  font-weight: 400;
+  font-synthesis: none;
+  font-size: clamp(56px, 9vw, 180px);
+  line-height: 0.88;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  margin: 0;
+  max-width: 14ch;
+  color: var(--ink);
+}
+
 .detail-story__lead {
   font-family: var(--display);
   font-weight: 400;
-  font-size: clamp(30px, 4.2vw, 72px);
-  line-height: 1.05;
-  letter-spacing: -0.01em;
+  font-size: clamp(24px, 2.8vw, 44px);
+  line-height: 1.15;
+  letter-spacing: -0.005em;
   margin: 0;
-  max-width: 22ch;
+  max-width: 26ch;
+  color: var(--muted);
 }
 .detail-story__meta {
   display: grid;
@@ -1166,16 +1114,6 @@ body.route-frame .frame {
   .detail-story__meta {
     grid-template-columns: repeat(2, 1fr);
   }
-  /* Grid falls back on tablets — 2×2 flankers, no empty center slot. */
-  .detail-grid__cell { grid-column: span 6; }
-  .detail-grid__cell--empty { display: none; }
-  .detail-hero__foot {
-    grid-template-columns: 1fr;
-    gap: 14px;
-    justify-items: start;
-  }
-  .detail-hero__scroll { display: none; }
-  .detail-hero__stock { justify-self: start; text-align: left; }
 }
 
 @media (max-width: 480px) {
