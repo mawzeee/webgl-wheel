@@ -8,22 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <!-- Inline bg so the very first paint is brown — no white flash before bundled CSS loads -->
+    <!-- Inline bg so the first paint is black before bundled CSS loads -->
     <style>
       html, body { background: #000; margin: 0; color: #EFE6D6; }
       #pre-loader, #pre-loader-pct { color: #EFE6D6 !important; }
     </style>
   </head>
   <body>
-
-    <!-- Void backdrop: full-bleed black sitting behind the home card.
-         At rest the home card (canvas + chrome) covers 100% of the viewport
-         so the backdrop is never visible. During a route transition, GSAP
-         flips this to opaque so the home card — now scaled 0.8 and lifted
-         -30vh — reads as a "white card on black void", exactly like the
-         Codrops reference. This is the entire depth effect. -->
-    <div class="void-backdrop" id="void-backdrop" aria-hidden="true"></div>
-
     <!-- Viewfinder: four terminal-style corner brackets locking onto the
          currently-centered frame. Fixed in screen center; the slider
          scrolls images through it. A small pulse fires on every frame
@@ -42,20 +33,48 @@
 
     <div id="canvas-container"></div>
 
+    <!-- Navbar — pulled OUT of .frame so its own z-index stacks cleanly
+         in the body, above the canvas's `pointer-events: auto` capture. -->
+    <nav class="navbar" id="navbar">
+      <a href="/" class="navbar__logo">MAWZE</a>
+      <div class="navbar__links">
+        <a href="#" class="navbar__link" data-action="autoplay">Reel</a>
+        <a href="#" class="navbar__link" data-action="studio">Studio</a>
+      </div>
+    </nav>
+
+    <!-- Studio slate — body-level fullscreen editorial overlay. Hidden by
+         default; opened from the Studio nav item. -->
+    <aside class="slate" id="about-slate" aria-hidden="true">
+      <button class="slate__close" id="slate-close" aria-label="Close">[ ESC ]</button>
+      <div class="slate__inner">
+        <div class="slate__col">
+          <span class="slate__eyebrow">MAWZE</span>
+          <h2 class="slate__title">Brand cinema.<br/>On demand.</h2>
+          <p class="slate__body">
+            MAWZE turns brand worlds into consistent campaign imagery.
+            The reel is the proof: every frame is generated, directed,
+            graded, and presented as a single visual system.
+          </p>
+        </div>
+        <div class="slate__col">
+          <span class="slate__eyebrow">Cold Open</span>
+          <p class="slate__body">
+            Twenty-two fashion vignettes built as a showroom for the
+            direction layer: one eye, one grade, one mechanical browser.
+            Scroll the reel, select a frame, and the projector answers.
+          </p>
+          <span class="slate__credit">Direction · Karim Saab<br/>Studio · MAWZE<br/>2026</span>
+        </div>
+      </div>
+    </aside>
+
     <!-- Editorial chrome — strict 4-corner grid, each corner one job only. -->
     <div class="frame">
-      <nav class="navbar" id="navbar">
-        <a href="/" class="navbar__logo">MAWZE</a>
-        <div class="navbar__links">
-          <a href="#" class="navbar__link">Index</a>
-          <a href="#" class="navbar__link">Archive</a>
-          <a href="#" class="navbar__link">About</a>
-        </div>
-      </nav>
 
       <!-- Middle-left: the one piece of editorial typography -->
       <div class="slide-info">
-        <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">Slow</span></span><span class="line-wrap"><span class="line">Burn</span></span></h2>
+        <h2 class="slide-title" id="slide-title"><span class="line-wrap"><span class="line">Courtyard</span></span><span class="line-wrap"><span class="line">Audit</span></span></h2>
       </div>
 
       <!-- Middle-right: instrument panel — radar chart + metric readouts.
@@ -117,7 +136,7 @@
 
       <!-- Bottom-left: canonical frame identity + camera metadata (one row, tabular) -->
       <div class="hero-tech" id="hero-tech" aria-hidden="true">
-        <span class="hero-tech__item hero-tech__idx" id="hero-tech-idx">001/025</span>
+        <span class="hero-tech__item hero-tech__idx" id="hero-tech-idx">001/022</span>
         <span class="hero-tech__sep">·</span>
         <span class="hero-tech__item" id="hero-tech-iso">ISO 200</span>
         <span class="hero-tech__sep">·</span>
@@ -128,17 +147,16 @@
         <span class="hero-tech__item" id="hero-tech-ev">EV −0.3</span>
       </div>
 
-      <!-- Bottom-right: stock + live scroll coordinate -->
+      <!-- Bottom-right: imprint identity + stock + live scroll coordinate -->
       <div class="frame__meta">
+        <span class="hero-tech__item hero-tech__imprint">MAWZE · COLD OPEN</span>
+        <span class="hero-tech__sep">·</span>
         <span class="hero-tech__item" id="stock-label">35mm · Kodak Vision 250D</span>
         <span class="hero-tech__sep">·</span>
         <span class="hero-tech__item hero-tech__live" id="hero-tech-phi">φ 0.0000</span>
       </div>
     </div>
 
-
-    <!-- Detail page — rendered on /frame/:id. Hidden on /. -->
-    <main class="detail" id="detail" aria-hidden="true"></main>
 
     <script type="module" src="/src/main.js"></script>
   </body>

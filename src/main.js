@@ -1,9 +1,6 @@
 import './style.css';
 import * as THREE from 'three';
 import { gsap } from 'gsap';
-import { Pane } from 'tweakpane';
-import { Router, parsePath, framePath } from './router.js';
-import { forwardSplice, reverseSplice, directLoadDetail, simpleReverse } from './transition.js';
 
 const IMAGE_COUNT = 22;
 const ATLAS_COLS = 5;
@@ -11,33 +8,31 @@ const ATLAS_ROWS = 5;
 const IMAGE_PATHS = Array.from({ length: IMAGE_COUNT }, (_, i) => `/images/slide-${i + 1}.avif`);
 const FOV = 50;
 const CAMERA_Z = 5;
+const DEBUG_UI = new URLSearchParams(window.location.search).has('debug');
 
-// Dark-humor editorial titles. The image roster has been replaced; the
-// titles below stay in slot order for now and may not narratively match
-// the new photographs — Karim will rename per-slide as he curates.
 const TITLES = [
-  'Slow<br/>Burn',               // slide-1
-  'Please<br/>Don\'t Vomit',     // slide-2
-  'Cult<br/>Starter Pack',       // slide-3
-  'Return<br/>to Sender',        // slide-4
-  'Unsubscribed',                // slide-5
-  'Nobody<br/>Asked',            // slide-6
-  'Last Supper<br/>(Casual)',    // slide-7
-  'Read Receipts<br/>Off',       // slide-8
-  'Wrong<br/>Platform',          // slide-9
-  'Emotional<br/>Support Donut', // slide-10
-  'Bad<br/>Hand',                // slide-11
-  'Worth<br/>the Cramps',        // slide-12
-  'Rent Is<br/>Overdue',         // slide-13
-  'Trust Fund<br/>Puppy',        // slide-14
-  'Stop<br/>Calling',            // slide-15
-  'Add<br/>to Cart',             // slide-16
-  'They<br/>Bite',               // slide-17
-  'Check Your<br/>Privilege',    // slide-18
-  'Post-Wedding<br/>Uber',       // slide-19
-  'Same<br/>Therapist',          // slide-20
-  'My SoundCloud<br/>Era',       // slide-21
-  '9 Lives,<br/>1 Outfit',       // slide-22
+  'Courtyard<br/>Audit',       // slide-1
+  'Departures<br/>Lounge',     // slide-2
+  'Ring<br/>Girls',            // slide-3
+  'Desert<br/>Witness',        // slide-4
+  'Soft<br/>Violence',         // slide-5
+  'Round<br/>One',             // slide-6
+  'Lipstick<br/>Weather',      // slide-7
+  'Court<br/>Evidence',        // slide-8
+  'Elevator<br/>Pitch',        // slide-9
+  'Crash<br/>Landing',         // slide-10
+  'Double<br/>Booked',         // slide-11
+  'Power<br/>Surge',           // slide-12
+  'Carry-On<br/>Altitude',     // slide-13
+  'Green<br/>Room',            // slide-14
+  'Moonrise<br/>Tailoring',    // slide-15
+  'Lunar<br/>Errand',          // slide-16
+  'Open<br/>Plan',             // slide-17
+  'Ringside<br/>Bride',        // slide-18
+  'Dust<br/>Protocol',         // slide-19
+  'Afterparty<br/>Suite',      // slide-20
+  'Dune<br/>Circuit',          // slide-21
+  'Sound<br/>Wall',            // slide-22
 ];
 
 
@@ -84,15 +79,6 @@ function techMetaFor(i) {
   const evs  = ['−0.3',  '0',    '+0.7', '−1.3',  '−0.7',  '+0.3'];
   const k = i % isos.length;
   return { iso: isos[k], ap: aps[k], sh: shs[k], ev: evs[k] };
-}
-
-function buildFrameState() {
-  return {
-    titles: TITLES,
-    signatures: SIGNATURES,
-    tech: Array.from({ length: IMAGE_COUNT }, (_, i) => techMetaFor(i)),
-    imagePaths: IMAGE_PATHS,
-  };
 }
 
 // Viewport-adaptive strip params. Called at boot + on every resize.
@@ -148,11 +134,48 @@ const params = {
   focusStrength: 0.75,
 };
 
+// ── Click animation parameters ───────────────────────────────────────
+//   Every knob in playFrameClickAnim reads from this object. When the
+//   debug pane is enabled with ?debug, changes affect the next animation.
+//   Defaults are tuned for a longer, cinematic helix recede.
+const clickParams = {
+  livePreview: false,
+
+  // Phase 1 — Roll
+  rollFrames: 1,             // how many frames the cylinder rolls forward
+  rollDuration: 0.45,        // seconds
+
+  // Phase 2 — Unspool (helix forms)
+  bendPeak: 1.20,            // spliceBend at peak — how tight the cylinder curls
+  twistPeak: 0.95,           // uTwist at peak — how many helix turns (higher = more)
+  unspoolDuration: 1.50,     // how long the helix takes to form
+
+  // Phase 2b — 3D angle (the helix tilts to show its depth)
+  rotationY: 0.55,           // radians — Y rotation of the mesh (~31°)
+  rotationX: -0.22,          // radians — X tilt (~-13°)
+
+  // Phase 2c — Recede into scene
+  positionZ: -2.8,           // negative = away from camera
+  positionY: 0.30,           // upward drift
+  positionX: -0.18,          // sideways drift
+  scaleEnd: 0.55,            // final scale before fade
+  recedeDuration: 1.70,      // length of the recede phase
+
+  // Phase 3 — Fade out
+  fadeOutStart: 1.40,        // when the fade begins (relative to t=0)
+  fadeOutDuration: 0.80,
+
+  // Phase 4 — Hold + reform
+  reformDelay: 0.30,         // invisible beat after fade ends
+  reformDuration: 0.70,      // fade-in duration
+};
+
 // ── Shaders ──
 
 const vertexShader = /* glsl */ `
 uniform float uBend;
 uniform float uRadius;
+uniform float uTwist;     // radians per world unit of Y — turns the cylinder into a helix
 varying vec2 vUv;
 varying float vNDotV;
 
@@ -160,15 +183,28 @@ void main() {
   vUv = uv;
   vec3 pos = position;
 
-  // Primary: vertical wheel
+  // Primary: vertical wheel bend (Y-axis cylinder wrap)
   float angleV = pos.y / uRadius;
   pos.y = mix(pos.y, uRadius * sin(angleV), uBend);
-
-  // Remove horizontal barrel: film only bends along one axis when tightly wrapped on a cylinder.
-  // The horizontal barrel made it look pinched and balloon-like at the edges.
   pos.z = mix(0.0, uRadius * (cos(angleV) - 1.0), uBend);
 
   vNDotV = cos(mix(0.0, angleV, uBend));
+
+  // ── HELIX TWIST ───────────────────────────────────────────────────
+  //   Rotate (x, z) around the Y axis by an angle proportional to the
+  //   vertex's Y position. As pos.y traverses the strip's height, each
+  //   slice is rotated more — the result is a corkscrew / helical
+  //   spiral. At uTwist=0 this is a no-op (bypassed for performance).
+  if (uTwist > 0.001) {
+    float twistAngle = pos.y * uTwist;
+    float c = cos(twistAngle);
+    float s = sin(twistAngle);
+    vec2 xz = vec2(pos.x, pos.z);
+    xz = vec2(xz.x * c - xz.y * s, xz.x * s + xz.y * c);
+    pos.x = xz.x;
+    pos.z = xz.y;
+  }
+
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
 `;
@@ -180,9 +216,10 @@ uniform sampler2D uAtlas;
 uniform float uAtlasCols; // e.g. 5 for a 5×5 grid
 uniform float uAtlasRows;
 uniform float uProgress, uBend, uSlotH, uFilmStrength, uFilmBase;
-uniform float uShadeExponent, uTime, uGrain, uBorderW, uSprockets, uShutter;
+uniform float uShadeExponent, uTime, uGrain, uBorderW, uSprockets;
 uniform float uExposure, uBrightness, uContrast, uSaturation, uVignette;
 uniform float uFocusStrength;
+uniform float uOpacity;
 varying vec2 vUv;
 varying float vNDotV;
 
@@ -199,8 +236,6 @@ vec4 sampleImage(int i, vec2 uv) {
 }
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
-float hash1(float x) { return fract(sin(x * 12.9898) * 43758.5453); }
-
 float sdRoundBox(vec2 p, vec2 b, float r) {
   vec2 q = abs(p) - b + r;
   return length(max(q, 0.0)) - r;
@@ -214,68 +249,6 @@ vec3 filmGrade(vec3 c) {
     vec3(mix(0.13,0.94,pow(s,0.78)), mix(0.08,0.84,pow(s,0.86)), mix(0.04,0.48,pow(s,1.20))),
     c * vec3(0.95, 0.80, 0.58), 0.2
   );
-}
-
-// ─── Film imperfections ───
-float dust(vec2 uv, float s) {
-  vec2 fp = vec2(uv.x, uv.y + s);
-  vec2 cell = floor(fp * vec2(180.0, 300.0));
-  vec2 f = fract(fp * vec2(180.0, 300.0)) - 0.5;
-  float h = hash(cell);
-  if (h < 0.988) return 0.0;
-  float r = 0.15 + 0.25 * hash(cell + 7.0);
-  return smoothstep(r, 0.0, length(f)) * (0.5 + 0.4 * hash(cell + 3.0));
-}
-
-float hair(vec2 uv, float s) {
-  float seg = floor(s * 0.6);
-  if (hash1(seg) < 0.90) return 0.0;
-  float y0 = hash1(seg + 1.3);
-  float x0 = hash1(seg + 2.7);
-  float rot = (hash1(seg + 4.1) - 0.5) * 2.5;
-  vec2 p = vec2(uv.x - x0, uv.y + s - y0 - floor(s));
-  float curve = p.x - 0.04 * sin(p.y * 18.0 + rot * 6.0) - rot * p.y;
-  float len = smoothstep(0.12, 0.08, abs(p.y));
-  return smoothstep(0.003, 0.0, abs(curve)) * len;
-}
-
-float scratches(vec2 uv, float s) {
-  float total = 0.0;
-  for (int i = 0; i < 3; i++) {
-    float fi = float(i);
-    float speed = fi == 0.0 ? 0.02 : (fi == 1.0 ? 0.15 : 0.6);
-    float col = floor(hash1(fi * 11.0) * 40.0 + uv.x * 120.0 + s * speed * 30.0);
-    float seed = hash1(col + fi * 17.0);
-    if (seed < 0.94) continue;
-    float jitter = (hash1(col * 3.1) - 0.5) * 0.0008;
-    float d = abs(fract(uv.x * 120.0) - 0.5 + jitter);
-    total += smoothstep(0.02, 0.0, d) * (0.12 + 0.2 * seed);
-  }
-  return total;
-}
-
-vec3 lightLeak(vec2 uv, float t) {
-  float bucket = floor(t * 0.12);
-  float life = fract(t * 0.12);
-  float env = smoothstep(0.0, 0.3, life) * smoothstep(1.0, 0.7, life);
-  if (hash1(bucket) < 0.55) return vec3(0.0);
-  vec2 c = vec2(hash1(bucket + 1.3), hash1(bucket + 9.7));
-  float r = 0.25 + 0.18 * hash1(bucket + 2.1);
-  float falloff = smoothstep(r, 0.0, length(uv - c));
-  vec3 warm = vec3(0.85, 0.55, 0.28);
-  return warm * falloff * env * 0.08;
-}
-
-vec3 dyeShift(vec3 c, float frameIdx) {
-  float h = hash1(frameIdx) * 2.0 - 1.0;
-  vec3 tint = vec3(
-    1.0 + h * 0.04,
-    1.0 + (hash1(frameIdx + 1.1) - 0.5) * 0.03,
-    1.0 - h * 0.05
-  );
-  float lift = (hash1(frameIdx + 3.7) - 0.5) * 0.025;
-  float gain = 1.0 + (hash1(frameIdx + 5.2) - 0.5) * 0.05;
-  return clamp((c + lift) * gain * tint, 0.0, 1.0);
 }
 
 void main() {
@@ -327,7 +300,7 @@ void main() {
 
     vec3 col = base + vec3(0.08) * edgeMark + vec3(0.09, 0.085, 0.08) * rim * 0.4;
     col = col * cylShade + grain - uGrain * 0.5;
-    gl_FragColor = vec4(col, alpha * (1.0 - hole));
+    gl_FragColor = vec4(col, alpha * (1.0 - hole) * uOpacity);
     return;
   }
 
@@ -380,7 +353,7 @@ void main() {
   // gelatin edge catching light. One hairline, AA-clean.
   color.rgb = mix(color.rgb, vec3(0.92, 0.88, 0.78), frameLine);
 
-  gl_FragColor = vec4(color.rgb, alpha);
+  gl_FragColor = vec4(color.rgb, alpha * uOpacity);
 }
 `;
 
@@ -422,7 +395,6 @@ class AudioKit {
       if (!bytes) { console.warn('[audio] preload returned null'); return; }
       this.tickBuffer = await this.ctx.decodeAudioData(bytes.slice(0));
       this.unlocked = true;
-      console.log('[audio] ready · state:', this.ctx.state, '· sr:', this.ctx.sampleRate);
     } catch (e) {
       console.warn('[audio] unlock failed', e);
     }
@@ -493,19 +465,16 @@ class WheelSlider {
     this.introBend = 1;   // 1 = fully cylinder at start
     this.spliceBend = 0;  // 0 at rest; splice transition tweens toward 1
     this.introActive = true;
-    // Locked = detail route is open. Suspends the loop's bend-velocity
-    // update + predictive magnet so the cylinder freezes flat on the
-    // chosen frame and doesn't drift while the user is in detail mode.
-    // Set true by forwardSplice, cleared by reverseSplice.
+    // Locked = a scripted reel performance is running. Suspends the
+    // bend-velocity update + predictive magnet so the cylinder does not
+    // fight GSAP while the selected frame is being performed.
     this.locked = false;
     this.frame = 0;
     this.lastTooth = 0;
-    this.shutterFlash = 0;
     this.lastInputTime = 0;
     // Cursor parallax state
     this.mouseX = 0; this.mouseY = 0;
     this.parallaxX = 0; this.parallaxY = 0;
-    this.peekOpen = false;
     this._snapTween = null;
     this.startTime = performance.now();
     this.audio = new AudioKit();
@@ -526,7 +495,7 @@ class WheelSlider {
       this._createTextPlane();
       this._buildRadar();
       this.listen();
-      this.initGUI();
+      if (DEBUG_UI) this.initGUI();
       this.loop();
       this.enter();
     });
@@ -561,7 +530,7 @@ class WheelSlider {
 
 
   async loadTextures() {
-    // Load all 25 as ImageBitmaps (preserves source colorspace, no sRGB clipping),
+    // Load all 22 as ImageBitmaps (preserves source colorspace, no sRGB clipping),
     // then pack into a single 5×5 atlas texture at native resolution.
     // WebGL has MAX_TEXTURE_IMAGE_UNITS limits (≥16) — a single atlas sidesteps them.
     let done = 0;
@@ -675,13 +644,14 @@ class WheelSlider {
         uTime: { value: 0 }, uGrain: { value: params.grainAmount },
         uBorderW: { value: params.borderWidth },
         uSprockets: { value: params.sprocketsPerImage },
-        uShutter: { value: 0 },
         uExposure: { value: params.exposure },
         uBrightness: { value: params.brightness },
         uContrast: { value: params.contrast },
         uSaturation: { value: params.saturation },
         uVignette: { value: params.vignetteStrength },
         uFocusStrength: { value: params.focusStrength },
+        uOpacity: { value: 1.0 },
+        uTwist: { value: 0.0 },
       },
     });
 
@@ -715,7 +685,7 @@ class WheelSlider {
     this._wheelVel = 0;
     this._wheelLastTime = 0;
     window.addEventListener('wheel', e => {
-      if (this.introActive || this.peekOpen) return;
+      if (this.introActive || this.locked) return;
       this.audio.start();
       const now = performance.now();
       const dt = Math.max(now - this._wheelLastTime, 8);
@@ -733,7 +703,7 @@ class WheelSlider {
     let lastY = 0;
 
     const startDrag = (y) => {
-      if (this.introActive || this.peekOpen) return;
+      if (this.introActive || this.locked) return;
       this.audio.start();
       this.dragging = true;
       lastY = y;
@@ -771,9 +741,9 @@ class WheelSlider {
       const dx = Math.abs(e.clientX - downX);
       const dy = Math.abs(e.clientY - downY);
       const dt = performance.now() - downT;
-      // If barely moved + quick: treat as click → open peek on THE clicked image
+      // If barely moved + quick: treat as frame selection.
       // Looser threshold accommodates finger taps (bigger contact area, slight jitter)
-      if (dx < 10 && dy < 10 && dt < 450 && !this.peekOpen && !this.introActive) {
+      if (dx < 10 && dy < 10 && dt < 450 && !this.locked && !this.introActive) {
         const tgt = e.target;
         if (!tgt || tgt.tagName !== 'CANVAS' || !this.mesh) return;
 
@@ -807,10 +777,23 @@ class WheelSlider {
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
 
-    // Escape returns to home when on a detail route
+    // Escape cancels the reel run.
     window.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && this.peekOpen) {
-        history.back();
+      if (e.key === 'Escape' && this._autoplayActive) {
+        this._stopAutoplay();
+      }
+      // ── DISCOVERED SECOND-STATE: SPACEBAR — auto-scroll the reel ──
+      //   Hold/tap SPACE to fly through the entire 22-frame catalog
+      //   in 3.5s. Velocity stays high during autoplay so the cinematic
+      //   ASCII stripes fire continuously — the rig "running" at full
+      //   tilt, end to end. Press SPACE again or ESC to cancel.
+      if (e.code === 'Space' && !this.locked && !this.introActive
+          && !this._autoplayActive && !this.dragging) {
+        e.preventDefault();
+        this._startAutoplay();
+      } else if (e.code === 'Space' && this._autoplayActive) {
+        e.preventDefault();
+        this._stopAutoplay();
       }
     });
 
@@ -885,21 +868,16 @@ class WheelSlider {
     const userActive = performance.now() - this.lastInputTime < 180;
     if (currentTooth !== this.lastTooth && !this.introActive && userActive) {
       this.lastTooth = currentTooth;
-      this.shutterFlash = 1;
       this.audio.snap();
     } else if (currentTooth !== this.lastTooth) {
       // Silent catch-up during momentum decay — no flash, no click
       this.lastTooth = currentTooth;
     }
-    // Fast decay — flash dies to ~zero in 4-5 frames, no hard snap needed
-    this.shutterFlash *= 0.55;
-
     const u = this.material.uniforms;
     u.uProgress.value = this.scroll;
     u.uBend.value = finalBend;
     u.uTime.value = (performance.now() - this.startTime) / 1000;
-    u.uShutter.value = this.shutterFlash;
-    // Live-bind Tweakpane params
+    // Live-bind look params so debug changes apply immediately.
     u.uFilmStrength.value = params.filmStrength;
     u.uFilmBase.value = params.filmBaseStrength;
     u.uGrain.value = params.grainAmount;
@@ -921,11 +899,10 @@ class WheelSlider {
       this.mesh.rotation.x = -this.parallaxY * 0.03;
     }
 
-    // ── THE POND — sync time, velocity, tint, shutter ──────────────
+    // ── THE POND — sync time, velocity, and tint ───────────────────
     //   Pure shader system; just feeds uniforms each frame.
     //   uVelocity drives wave amplitude, ripple speed, and glitch noise.
     //   uTint lerps between adjacent frames' dominant colors during scroll.
-    //   uShutter rides the cylinder's frame-land flash for synced pulses.
     if (this.asciiMaterial) {
       const u2 = this.asciiMaterial.uniforms;
       u2.uScroll.value = this.scroll;
@@ -937,8 +914,6 @@ class WheelSlider {
       this._asciiVel = (this._asciiVel || 0) * 0.82 + asciiDelta * 0.18;
       const velNorm = Math.min(this._asciiVel * 42, 1);
       u2.uVelocity.value = velNorm;
-
-      u2.uShutter.value = this.shutterFlash || 0;
 
       // ── Resolution arc — the only animation in this layer.
       //   Photograph holds at rest; scroll loosens it slightly toward
@@ -1059,13 +1034,69 @@ class WheelSlider {
       this._wheelVel = (this._wheelVel || 0) * 0.88;
       if (Math.abs(this._wheelVel) < 0.00001) this._wheelVel = 0;
     }
-    if (!this.dragging && !this.introActive && !this.peekOpen && !this.locked) {
+    if (!this.dragging && !this.introActive && !this.locked) {
       const predicted = this.scrollTarget + (this._wheelVel || 0) * 400;
       const target = Math.round(predicted);
       this.scrollTarget += (target - this.scrollTarget) * 0.02;
     }
 
+    // ── LIVE CLICK-ANIM PREVIEW ──────────────────────────────────────
+    //   When clickParams.livePreview is on, the render loop applies the
+    //   GUI's tuning values DIRECTLY to the cylinder mesh + uniforms
+    //   every frame. The user drags a slider → cylinder morphs in
+    //   real time. Toggle off to return to idle.
+    if (clickParams.livePreview && !this._clickAnimating) {
+      this.spliceBend = clickParams.bendPeak;
+      this.material.uniforms.uTwist.value = clickParams.twistPeak;
+      this.mesh.rotation.x = clickParams.rotationX;
+      this.mesh.rotation.y = clickParams.rotationY;
+      this.mesh.position.x = clickParams.positionX;
+      this.mesh.position.y = clickParams.positionY;
+      this.mesh.position.z = clickParams.positionZ;
+      this.mesh.scale.x   = clickParams.scaleEnd;
+      this.mesh.scale.y   = clickParams.scaleEnd;
+    }
+
     this.renderer.render(this.scene, this.camera);
+  }
+
+  // ── DISCOVERED SECOND-STATE: SPACE-driven autoplay ──────────────────
+  //  Holding/tapping SPACE flies the cylinder through the entire 22-frame
+  //  catalog in 3.5s. The cinematic ASCII stripes fire continuously
+  //  during the run because we keep _asciiVel pegged high, so the rig
+  //  visibly "runs the reel" end-to-end. On completion, it eases back
+  //  to where the user was — no permanent state change. ESC or SPACE
+  //  again cancels mid-flight. Easter-egg discoverable, dramatic when
+  //  found.
+  _startAutoplay() {
+    if (this._autoplayActive) return;
+    this._autoplayActive = true;
+    const startScroll = this.scrollTarget;
+    const target = startScroll + IMAGE_COUNT;
+    this._autoplayTween = gsap.to(this, {
+      scrollTarget: target,
+      scroll: target,
+      duration: 3.5,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        // Force the ASCII velocity high so the cinematic stripes burn
+        // continuously through the reel — peak 'film passing' read.
+        this._asciiVel = 0.022;
+        this.lastInputTime = performance.now();
+      },
+      onComplete: () => {
+        this._autoplayActive = false;
+        this._autoplayTween = null;
+      },
+    });
+  }
+  _stopAutoplay() {
+    if (!this._autoplayActive) return;
+    if (this._autoplayTween) this._autoplayTween.kill();
+    this._autoplayTween = null;
+    this._autoplayActive = false;
+    // Snap to the nearest integer frame so the rig settles cleanly.
+    this.scrollTarget = Math.round(this.scrollTarget);
   }
 
   // ── Hero sequence ──
@@ -1170,9 +1201,6 @@ class WheelSlider {
       ease: fadeEase,
     }, 'hold');
 
-    // Daylight shift killed — MAWZE stays in immersive-dark throughout.
-    // (Previously: `document.body.classList.add('daylight')` faded bg brown→beige.)
-
     // ─────────────────────────────────────────────────────────────────
     //  ACT 4  — HERO (1.0s, climactic)
     //   silhouette → centered, bend unfolds, chrome reveals on tail
@@ -1190,6 +1218,22 @@ class WheelSlider {
       duration: 0.9,
       ease: 'power2.out',
     }, 'hero+=0.1');
+
+    // ── INTRO HIT ──────────────────────────────────────────────────
+    //   The moment the cylinder lands at center, fire a synchronized
+    //   beat: cinematic ASCII stripe burst + a louder audio click.
+    //   ~0.3s, locked. Sets the rig's tone
+    //   in the first impression — "this thing is alive."
+    tl.add(() => {
+      // Spike the ASCII velocity so the cinematic film stripes
+      // burst across the layer for one brief moment, then fade out
+      // naturally as the spike decays.
+      this._asciiVel = 0.18;
+      // Audio sting — only fires after the user gesture has unlocked
+      // the audio context. On first-load this may be silent until the
+      // user clicks; after that, every reload's intro hit lands.
+      this.audio.snap();
+    }, 'hero+=0.95');
 
     // Chrome reveals on the wheel's deceleration tail — gentle staircase
     tl.to('.navbar',        { opacity: 1,    duration: 0.4, ease: 'power2.out' }, 'hero+=0.55');
@@ -1269,7 +1313,6 @@ class WheelSlider {
         uYellow:     { value: new THREE.Vector3(0.72, 0.58, 0.30) },
         uWhite:      { value: new THREE.Vector3(0.82, 0.78, 0.72) },
         uVelocity:   { value: 0 },
-        uShutter:    { value: 0 },
         // 0 = chaos, 1 = crystallized photograph. Lerps gently with velocity.
         uResolved:   { value: 1 },
       },
@@ -1294,7 +1337,6 @@ class WheelSlider {
         uniform vec3 uYellow;
         uniform vec3 uWhite;
         uniform float uVelocity;
-        uniform float uShutter;
         uniform float uResolved;     // 0 = chaos, 1 = photograph crystallized
         varying vec2 vUv;
 
@@ -1372,7 +1414,7 @@ class WheelSlider {
 
           // ─── COLOR ──────────────────────────────────────────────────
           //   Per-frame tint, slight chaos-driven drift toward the
-          //   storm palette. No wave-band brightening, no shutter
+          //   storm palette. No wave-band brightening.
           //   bloom. Just a calm photograph in characters.
           float cellHash = hash12(cellIdx * 0.73 + 11.3);
           vec3 stormTint = mix(uYellow, uWhite, step(0.5, cellHash));
@@ -1592,51 +1634,6 @@ class WheelSlider {
   //    actual texture load. Resolves only when BOTH are complete (honest). ──
   _runLoader() {
     const pctEl = document.getElementById('pre-loader-pct');
-    const loaderEl = document.getElementById('pre-loader');
-
-    // ── DEBUG: log every angle on the loader's color so we can see exactly
-    //    what the browser is computing. Check the browser console.
-    if (loaderEl && pctEl) {
-      const cs1 = window.getComputedStyle(loaderEl);
-      const cs2 = window.getComputedStyle(pctEl);
-      const rootStyle = window.getComputedStyle(document.documentElement);
-      const bodyStyle = window.getComputedStyle(document.body);
-
-      console.groupCollapsed('%c[LOADER COLOR DEBUG]', 'color: #EFE6D6; background: #000; padding: 4px 8px; font-weight: bold;');
-      console.log('--ink (root var):', rootStyle.getPropertyValue('--ink').trim() || '(not set)');
-      console.log('body computed color:', bodyStyle.color);
-      console.log('body computed background:', bodyStyle.backgroundColor);
-      console.log('.pre-loader computed color:', cs1.color);
-      console.log('.pre-loader computed opacity:', cs1.opacity);
-      console.log('.pre-loader computed background:', cs1.backgroundColor);
-      console.log('#pre-loader-pct computed color:', cs2.color);
-      console.log('#pre-loader-pct computed opacity:', cs2.opacity);
-      console.log('#pre-loader-pct inline style.color:', pctEl.style.color || '(none)');
-      console.log('loaderEl inline style.color:', loaderEl.style.color || '(none)');
-      console.log('loaderEl classList:', Array.from(loaderEl.classList));
-      console.log('pctEl parent:', pctEl.parentElement?.id, pctEl.parentElement?.className);
-      console.log('pctEl innerHTML:', pctEl.innerHTML);
-
-      // Dump every CSS rule that matches .pre-loader
-      const rules = [];
-      for (const sheet of document.styleSheets) {
-        try {
-          for (const rule of sheet.cssRules || []) {
-            if (rule.selectorText && /pre-loader/.test(rule.selectorText)) {
-              rules.push({ selector: rule.selectorText, color: rule.style.color, opacity: rule.style.opacity });
-            }
-          }
-        } catch (e) { /* cross-origin */ }
-      }
-      console.log('Matching CSS rules:', rules);
-
-      // Check for any filter, mix-blend, or compositing trickery
-      console.log('.pre-loader filter:', cs1.filter);
-      console.log('.pre-loader mixBlendMode:', cs1.mixBlendMode);
-      console.log('#pre-loader-pct filter:', cs2.filter);
-      console.log('#pre-loader-pct mixBlendMode:', cs2.mixBlendMode);
-      console.groupEnd();
-    }
 
     const MIN_LOAD_MS = 350;
     const t0 = performance.now();
@@ -1653,9 +1650,6 @@ class WheelSlider {
       tick();
     });
   }
-
-  // Snapshot of per-frame data the transition module needs.
-  getFrameState() { return buildFrameState(); }
 
   // Keep the viewfinder CSS size in lockstep with the current stripWidth so
   // the brackets always hug the image exactly (stripWidth changes on resize
@@ -1826,8 +1820,9 @@ class WheelSlider {
     });
   }
 
-  // ── Tweakpane (hidden by default, toggle with D) ──
-  initGUI() {
+  // ── Debug pane: opt-in with ?debug ────────────────────────────────
+  async initGUI() {
+    const { Pane } = await import('tweakpane');
     const pane = new Pane({ title: 'Debug' });
     const strip = pane.addFolder({ title: 'Strip' });
     strip.addBinding(params, 'stripWidth', { min: 0.15, max: 0.65, step: 0.01 })
@@ -1855,16 +1850,63 @@ class WheelSlider {
     const audio = pane.addFolder({ title: 'Audio' });
     audio.addBinding(this.audio, 'muted');
 
-    // Toggle pane visibility with 'D'
+    // ── CLICK ANIMATION CONTROLS ─────────────────────────────────────
+    //   Live preview: drag sliders → cylinder morphs in real time.
+    //   Trigger: fires the animation on the centered frame.
+    const clickFold = pane.addFolder({ title: 'Click anim', expanded: true });
+    clickFold.addBinding(clickParams, 'livePreview', { label: '⚡ live preview' })
+      .on('change', (e) => {
+        if (!e.value) {
+          // Snap back to idle when preview is turned off.
+          this.spliceBend = 0;
+          this.material.uniforms.uTwist.value = 0;
+          this.mesh.rotation.set(0, 0, 0);
+          this.mesh.position.set(0, 0, 0);
+          this.mesh.scale.set(1, 1, 1);
+          this.material.uniforms.uOpacity.value = 1;
+        }
+      });
+    clickFold.addBlade({ view: 'separator' });
+    clickFold.addBinding(clickParams, 'rollFrames',      { min: 0, max: 5,    step: 0.5,  label: 'roll frames' });
+    clickFold.addBinding(clickParams, 'rollDuration',    { min: 0, max: 2,    step: 0.05, label: 'roll dur (s)' });
+    clickFold.addBlade({ view: 'separator' });
+    clickFold.addBinding(clickParams, 'bendPeak',        { min: 0, max: 2,    step: 0.05, label: 'bend peak' });
+    clickFold.addBinding(clickParams, 'twistPeak',       { min: 0, max: 2.5,  step: 0.05, label: 'twist peak' });
+    clickFold.addBinding(clickParams, 'unspoolDuration', { min: 0.2, max: 4,  step: 0.1,  label: 'unspool dur' });
+    clickFold.addBlade({ view: 'separator' });
+    clickFold.addBinding(clickParams, 'rotationY',       { min: -2, max: 2,   step: 0.05, label: 'rotation Y' });
+    clickFold.addBinding(clickParams, 'rotationX',       { min: -1.5, max: 1.5, step: 0.05, label: 'rotation X' });
+    clickFold.addBlade({ view: 'separator' });
+    clickFold.addBinding(clickParams, 'positionZ',       { min: -6, max: 4,   step: 0.1,  label: 'position Z' });
+    clickFold.addBinding(clickParams, 'positionY',       { min: -2, max: 2,   step: 0.05, label: 'position Y' });
+    clickFold.addBinding(clickParams, 'positionX',       { min: -2, max: 2,   step: 0.05, label: 'position X' });
+    clickFold.addBinding(clickParams, 'scaleEnd',        { min: 0.05, max: 2, step: 0.05, label: 'scale end' });
+    clickFold.addBinding(clickParams, 'recedeDuration',  { min: 0.2, max: 4,  step: 0.1,  label: 'recede dur' });
+    clickFold.addBlade({ view: 'separator' });
+    clickFold.addBinding(clickParams, 'fadeOutStart',    { min: 0, max: 4,    step: 0.05, label: 'fade start' });
+    clickFold.addBinding(clickParams, 'fadeOutDuration', { min: 0.05, max: 2, step: 0.05, label: 'fade dur' });
+    clickFold.addBinding(clickParams, 'reformDelay',     { min: 0, max: 2,    step: 0.05, label: 'reform delay' });
+    clickFold.addBinding(clickParams, 'reformDuration',  { min: 0.05, max: 2, step: 0.05, label: 'reform dur' });
+    clickFold.addBlade({ view: 'separator' });
+
+    // Trigger button — fires the animation on the currently-centered
+    // frame. Won't double-fire if one's already running.
+    clickFold.addButton({ title: 'Trigger animation' }).on('click', () => {
+      if (this._clickAnimating) return;
+      const f = this.frame;
+      playFrameClickAnim(this, f);
+    });
+
+    // Toggle pane visibility with 'D' when the debug pane is enabled.
     const paneEl = document.querySelector('.tp-dfwv');
     window.addEventListener('keydown', e => {
       if (e.key === 'd' || e.key === 'D') {
-        paneEl?.classList.toggle('visible');
+        paneEl?.classList.toggle('hidden');
       }
     });
   }
 
-  // ── Helper for Tweakpane strip rebinding ──
+  // ── Helper for debug strip rebinding ──
   rebuildStrip() {
     if (!this.mesh) return;
     const vp = this.viewport();
@@ -1878,67 +1920,162 @@ class WheelSlider {
   }
 }
 
+// ── FRAME-CLICK ANIMATION (in place — film unspools as a helix) ───────
+//   All values read from clickParams so live GUI changes affect the
+//   next click immediately. The strip is film: it bends, twists into
+//   a helix, tilts to show 3D depth, recedes into the scene, fades,
+//   then reforms.
+function playFrameClickAnim(slider, frame) {
+  if (slider._clickAnimating) return;
+  slider._clickAnimating = true;
+  slider.locked = true;
+  slider._wheelVel = 0;
+
+  const cp = clickParams;
+  const N = IMAGE_COUNT;
+  const cur = slider.scroll;
+  const k = Math.round((cur - frame) / N);
+  const targetScroll = k * N + frame;
+
+  // Phase timing math — derived from clickParams so the GUI sliders
+  // affect everything coherently.
+  const tRoll       = 0;
+  const tUnspool    = cp.rollDuration * 0.50;        // overlaps with roll
+  const tRecede     = tUnspool + 0.10;
+  const tFadeOut    = cp.fadeOutStart;
+  const tFadeEnd    = tFadeOut + cp.fadeOutDuration;
+  const tReform     = tFadeEnd + cp.reformDelay;
+
+  const tl = gsap.timeline({
+    onComplete: () => {
+      slider._clickAnimating = false;
+      slider.locked = false;
+    },
+  });
+
+  // ─── PHASE 1: ROLL ──────────────────────────────────────────────
+  tl.to(slider, {
+    scroll: targetScroll + cp.rollFrames,
+    scrollTarget: targetScroll + cp.rollFrames,
+    duration: cp.rollDuration,
+    ease: 'power2.out',
+  }, tRoll);
+
+  // ─── PHASE 2: UNSPOOL — bend + twist climb ─────────────────────
+  tl.to(slider, {
+    spliceBend: cp.bendPeak,
+    duration: cp.unspoolDuration,
+    ease: 'power2.in',
+  }, tUnspool);
+  tl.to(slider.material.uniforms.uTwist, {
+    value: cp.twistPeak,
+    duration: cp.unspoolDuration,
+    ease: 'power2.in',
+  }, tUnspool);
+
+  // ─── PHASE 2b: 3D angle ────────────────────────────────────────
+  tl.to(slider.mesh.rotation, {
+    y: cp.rotationY,
+    x: cp.rotationX,
+    duration: cp.unspoolDuration + 0.20,
+    ease: 'power2.in',
+  }, tUnspool);
+
+  // ─── PHASE 2c: Recede into depth ───────────────────────────────
+  tl.to(slider.mesh.position, {
+    z: cp.positionZ,
+    y: cp.positionY,
+    x: cp.positionX,
+    duration: cp.recedeDuration,
+    ease: 'power2.in',
+  }, tRecede);
+  tl.to(slider.mesh.scale, {
+    x: cp.scaleEnd,
+    y: cp.scaleEnd,
+    duration: cp.recedeDuration,
+    ease: 'power2.in',
+  }, tRecede);
+
+  // ─── PHASE 3: FADE OUT ─────────────────────────────────────────
+  tl.to(slider.material.uniforms.uOpacity, {
+    value: 0,
+    duration: cp.fadeOutDuration,
+    ease: 'power2.in',
+  }, tFadeOut);
+
+  // ─── PHASE 4: REFORM ───────────────────────────────────────────
+  tl.add(() => {
+    slider.scroll = targetScroll;
+    slider.scrollTarget = targetScroll;
+    slider.spliceBend = 0;
+    slider.material.uniforms.uTwist.value = 0;
+    slider.mesh.rotation.set(0, 0, 0);
+    slider.mesh.position.set(0, 0, 0);
+    slider.mesh.scale.set(1, 1, 1);
+  }, tReform);
+  tl.to(slider.material.uniforms.uOpacity, {
+    value: 1,
+    duration: cp.reformDuration,
+    ease: 'power2.out',
+  }, tReform);
+}
+
 // ── Bootstrap ────────────────────────────────────────────────────
 
 const slider = new WheelSlider();
-const detailRoot = document.getElementById('detail');
 
-// Tracks whether the current detail route was reached via forwardSplice.
-// If not (direct URL load / reload), back-nav runs simpleReverse since the
-// slider may still be booting and the FLIP shard has no valid source rect.
-let spliceEngaged = false;
-
-const router = new Router({
-  onLeave: async (prev, next, direction) => {
-    if (prev.name === 'frame' && next.name === 'home') {
-      if (spliceEngaged && slider.mesh && !slider.introActive) {
-        await reverseSplice({ slider, frame: prev.frame, detailRoot, frameState: buildFrameState() });
-      } else {
-        await simpleReverse({ detailRoot, slider });
-      }
-      spliceEngaged = false;
-      slider.peekOpen = false;
-    }
-  },
-  onEnter: async (next, prev, direction) => {
-    if (next.name === 'frame') {
-      // Can't splice before textures + mesh exist. If boot isn't done yet, direct-load.
-      if (!slider.mesh || slider.introActive) {
-        directLoadDetail({ slider, frame: next.frame, detailRoot, frameState: buildFrameState() });
-        slider.peekOpen = true;
-        spliceEngaged = false;
-        return;
-      }
-      slider.peekOpen = true;
-      spliceEngaged = true;
-      await forwardSplice({ slider, frame: next.frame, detailRoot, frameState: buildFrameState() });
-    }
-  },
-});
-
-// Wire slider → router
+// Frame selection is a brand-showroom gesture: the reel acknowledges the
+// picked image physically, then reforms around it.
 slider.onFrameClick = (f) => {
-  router.navigate({ name: 'frame', frame: f });
+  if (slider._clickAnimating) return;
+  playFrameClickAnim(slider, f);
 };
 
-router.init();
-
-// Delegate clicks on in-app links (detail page back button, footer)
+// ── STUDIO SLATE wiring ─────────────────────────────────────────────
+//   Reel → fires the SPACE-style autoplay through the reel
+//   Studio → opens the MAWZE studio thesis / waitlist slate
+//   ESC + click outside the inner column + close button all close it.
+const slate = document.getElementById('about-slate');
+const slateInner = slate?.querySelector('.slate__inner');
+const slateClose = document.getElementById('slate-close');
+function openSlate() {
+  if (!slate) return;
+  slate.setAttribute('aria-hidden', 'false');
+  slate.classList.add('open');
+}
+function closeSlate() {
+  if (!slate) return;
+  slate.setAttribute('aria-hidden', 'true');
+  slate.classList.remove('open');
+}
 document.addEventListener('click', (e) => {
-  const link = e.target.closest('a[data-nav="home"]');
-  if (!link) return;
-  e.preventDefault();
-  router.navigate({ name: 'home' });
+  const studioLink = e.target.closest('[data-action="studio"]');
+  const reelLink = e.target.closest('[data-action="autoplay"]');
+  if (studioLink) {
+    e.preventDefault();
+    openSlate();
+    return;
+  }
+  if (reelLink) {
+    e.preventDefault();
+    if (slider.locked) return;
+    slider._startAutoplay();
+    return;
+  }
+});
+slateClose?.addEventListener('click', closeSlate);
+slate?.addEventListener('click', (e) => {
+  if (slateInner && !slateInner.contains(e.target) && e.target !== slateClose) {
+    closeSlate();
+  }
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && slate?.classList.contains('open')) {
+    closeSlate();
+  }
 });
 
-// Handle direct load on /frame/:id — render detail immediately (doesn't need slider mesh).
-// Slider still boots in the background but its chrome stays hidden via the
-// route-frame body class. When the user hits back, reverseSplice runs the
-// "rise" animation on whatever state the slider has landed in.
-(function handleInitialRoute() {
-  const initial = parsePath(location.pathname);
-  if (initial.name !== 'frame') return;
-  slider.peekOpen = true;
-  directLoadDetail({ slider, frame: initial.frame, detailRoot, frameState: buildFrameState() });
-  router.current = initial;
-})();
+// Retire old frame deep links cleanly now that the reel is the primary page.
+if (/^\/frame\/\d{1,2}\/?$/.test(location.pathname)) {
+  history.replaceState({}, '', '/');
+}

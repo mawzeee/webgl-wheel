@@ -222,6 +222,80 @@ The skill is essentially this document, parameterized by a brand profile.
 
 A running log of taste rules learned from Karim. Each entry is a durable judgment that should inform every future prompt. Append, don't overwrite.
 
+### Lesson 25 — Fashion BRAND CAMPAIGN, not film still. Stage the action; the wardrobe must read.
+**Observed:** I rendered the desert helicopter heist as a literal action film still — model mid-stride sprinting, helicopter mid-flight, heavy dust storm, motion-blur chaos. The result was a muddy cinematic moment where the wardrobe was barely readable. Karim flagged it: *"It should be for a fashion brand, not a film."* Going back to the reference (the Adidas heist shoot): the model is POSED body-to-camera, the crop top fully readable, the side-stripe leggings fully visible, the helicopter is clearly there but acts as a staged prop, the dust is light haze not opaque storm, the Persian rug is composed in flight not violent. **It's a fashion shoot styled to LOOK like a film still.**
+
+**Rule:** Fashion brand campaigns STAGE action. They do not ENACT it. The garment must be the lit, readable, composed hero of every frame. Even when the brief is "heist / chase / explosion," the model stands POSED, the chaos is COMPOSED around her, the action is dressed onto the frame.
+
+**The translation:**
+
+| Film still mode (wrong for fashion) | Fashion campaign mode (correct) |
+|---|---|
+| Model mid-stride running, motion-blur | Model posed body-to-camera, chest readable |
+| Heavy dust storm obscuring scene | Light dust haze drifting, scene fully readable |
+| Helicopter mid-flight rotor wash chaos | Helicopter hovering or landed, clear silhouette, used as styled prop |
+| Loot scattering in literal explosion | Loot arranged in styled scatter as foreground composition |
+| Hair flying violently across face | Hair tousled in wind, face partially visible, fashion gaze just past lens |
+| Multiple sources of light bouncing | One named motivated warm source landing on the wardrobe surface |
+| Camera capturing a moment | Camera composing a tableau |
+
+**The litmus test:** *Could I pause this image and read every garment, every product surface, every composed element, in one look?* If yes, campaign mode. If the eye has to search through chaos for the product, film-still mode — wrong.
+
+**Apply:** Even in heavy-action briefs, pose the model first. Compose the chaos around her. The wardrobe reads. The action is implied, not enacted. *Vocabulary swaps:* "mid-stride running" → "posed mid-action," "motion-blur" → "tousled in wind," "kicking up dust storm" → "light dust haze drifting," "chaos" → "styled scatter," "scattering through air" → "arranged in foreground composition."
+
+### Lesson 24 — In MJ, the face is the AI tell. Hide, profile, or distance the face — don't expose it.
+**Observed:** The dual-figure heist render came back with the foreground model's face fully visible at close range to camera, rendered as airbrushed mannequin with dead eyes despite film grain, anamorphic, and source-motivated lighting all layered on top. Karim: *"Everything looks too AI. The characters look AI."* Cross-checking the worked images:
+- **Moon shot worked** — face fully hidden, only back of head + sunglasses temple
+- **Wreck-and-horse worked** — face turned in profile away from lens
+- **Basketball-lobster worked** — face small in frame, monumentalized at distance, lit only on the rim
+- **Speaker-cathedral worked** — body language carries it, face is one element among many at mid-distance
+- **Heist-and-ducks failed** — foreground face direct, sharp, close, fully lit
+
+**Rule:** Real photographs of real people have micro-asymmetries, pore texture, fine hairs, sweat, tension, asymmetric eye shapes. MJ's training pool defaults to a smoothed beauty-pass on every face. **Describing "asymmetry" or "natural skin texture" does NOT beat this default.** The only reliable fix is to **stop putting the face in front of the camera.**
+
+**The face exposure hierarchy (most → least AI-tell):**
+
+| Position | Description | AI tell |
+|---|---|---|
+| 1 ❌ | Front-facing portrait, eyes uncovered, face in sharp focus | Maximum |
+| 2 ❌ | Front-facing with sunglasses, lips/skin sharp + close | High |
+| 3 ⚠️ | 3/4 angle to camera, sunglasses, sharp + close | Risky |
+| 4 ✅ | Deep profile (90°), sunglasses, chin down — only cheekbone + jaw read | Low |
+| 5 ✅ | 3/4 from behind, only temple/hairline visible | Very low |
+| 6 ✅ | Pure back-to-camera, no face at all | Zero |
+
+**For close-up product-hero shots, default to position 4 or 5.** Mid-distance group shots can survive position 3 if face is small in frame. Position 1 and 2 are forbidden.
+
+**Multi-character compositions amplify the tell.** Two faces = two AI-renders to evaluate. Default to **single hero** unless dual-figure narrative is structurally required (peer heist, family lineage, etc.). When dual is required, push the partner deep into background bokeh so their face is fully soft.
+
+**Reference pool matters.** For close-face frames, drop the glossy pool (Tyler Mitchell, Inez & Vinoodh, Mert & Marcus close-ups) and use the gritty cinematic pool (**Steven Klein, Glen Luchford, Steven Meisel** in his cinematic-grit register). Glossy refs push MJ to beauty-pass; gritty refs keep the texture rough.
+
+**Stylize matters.** `--s 400+` pushes the pretty default — bigger eyes, smoother skin, glamour-pass. **For any frame with a visible face, drop to `--s 250`.** Reserve 400+ for face-hidden compositions where MJ can be allowed to stylize freely.
+
+**Film stock specifics fight the default.** *"shot on 35mm anamorphic Kodak Portra 800"* or *"shot on Kodak Tri-X 400"* — MJ's training pool for these stock names is dominated by real film photography, which has texture by physics. Use the stock name explicitly.
+
+**Avoid face-shaped objects in the bokeh.** Foreground out-of-focus circular objects (duck heads, balloon faces, masks, dolls) get rendered by MJ as faces — adding a SECOND AI face to the frame. If a Magrittean prop is round-and-face-coded, place it sharp in mid-ground or far background, never in foreground bokeh.
+
+**Apply — audit every prompt before submitting:**
+1. Where is the face? (Position 1–6) — must be 4 or 5 unless face is small in frame
+2. How many faces in frame? — drop to 1 unless dual is required
+3. Stylize > 300? — drop to 250 if face is visible
+4. References glossy? — swap to gritty
+5. Any face-shaped objects in foreground bokeh? — move them sharp or drop them
+
+### Lesson 23 — References are SEEDS, not TARGETS. Translate the move; don't transcribe the image.
+**Observed:** Karim sent an LV × NBA reference shot. I translated it 1:1 — same composition, same wardrobe layout, same midday blue-sky daylight, same camera grammar. He flagged: *"You just copied the prompt I gave you. You always have to modify the scene and only get inspired by what you saw. This is not even good."*
+
+**Rule:** A reference image gives the **COMPOSITIONAL MOVE** (e.g. *worm's-eye monument on a pedestal of basketballs*). It does NOT give the palette, mood, time of day, or character beat. Those come from MAWZE's voice — dreamy cinematic, source-motivated, deep shadow, personality-bearing. Never reproduce a reference's atmosphere. Only its skeleton.
+
+**The translation framework — run on every reference:**
+1. **Strip the reference to its compositional move.** One sentence: *what is the structural gesture?* If you can't say it in one sentence, you haven't read the reference.
+2. **Discard everything else.** Palette, time of day, weather, light direction, location specifics, post-production grade — all replaceable.
+3. **Re-cast in MAWZE's voice.** Dreamy cinematic dusk over midday. Source-motivated warm rake over flat overhead daylight. Saturated cinematic color story over commercial neutral.
+4. **Add a personality beat to the subject.** Eyes closed in private prayer, half-smile in private joke, hand resting on the prop, chin tilted to the dying light. The reference may show a posing statue; MAWZE shows a person.
+
+**Apply:** When a reference comes in, the output should read as *inspired by* the reference, not *derived from* it. If a viewer shown the reference + MAWZE's output reads them as the same shoot, the prompt failed. They should read as the same MOVE, different soul. This is the layer above Lesson 17 — Lesson 17 governs prompt-to-MJ; Lesson 23 governs reference-to-prompt.
+
 ### Lesson 22 — NO NAMED COPYRIGHTED BRAND IP IN THE FRAME. Describe the silhouette, not the trademark.
 **Observed:** I wrote *"oversized Balenciaga FW25 black technical Defender parka with the BALENCIAGA wordmark printed large across the upper back."* Karim flagged it: *"don't put Balenciaga, we don't have the copyright."* This is a real legal concern — the LoRA is being trained as a commercial product (MAWZE Studio for DTC brands). Training data with copyrighted wordmarks rendered into the frame is liability for the eventual SaaS.
 
